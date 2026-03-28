@@ -1,0 +1,137 @@
+---
+title: "Files"
+description: "Upload and manage firmware images and configuration files via the NBI REST API."
+---
+
+The NBI provides endpoints for uploading firmware images and configuration files into GenieACS. Files are stored in MongoDB GridFS and served to CPE devices by the `genieacs-fs` file server during download operations.
+
+<Note>
+  To trigger a firmware upgrade or config file download on a device, upload the file here first, then use the [`download` task](/api/tasks#download) to instruct the device to fetch it.
+</Note>
+
+## Upload a file
+
+```
+PUT /files/<file_name>
+```
+
+Uploads a new file or overwrites an existing file with the same name.
+
+<ParamField path="file_name" type="string" required>
+  The name to store the file under. This is also the name used when referencing the file in a `download` task.
+</ParamField>
+
+**Request body:** Raw binary file content.
+
+**Request headers (optional metadata):**
+
+| Header | Description |
+|--------|-------------|
+| `fileType` | File type string. See common values below. |
+| `oui` | OUI of the target device model. |
+| `productClass` | Product class of the target device. |
+| `version` | Firmware version string (for firmware images). |
+
+**Response:** `201 Created` on success.
+
+**Example — upload a firmware image:**
+
+```bash
+curl -i 'http://localhost:7557/files/new_firmware_v1.0.bin' \
+-X PUT \
+--data-binary @"./new_firmware_v1.0.bin" \
+--header "fileType: 1 Firmware Upgrade Image" \
+--header "oui: 123456" \
+--header "productClass: ABC" \
+--header "version: 1.0"
+```
+
+---
+
+## Delete a file
+
+```
+DELETE /files/<file_name>
+```
+
+Deletes a previously uploaded file.
+
+<ParamField path="file_name" type="string" required>
+  The name of the file to delete.
+</ParamField>
+
+```bash
+curl -i 'http://localhost:7557/files/new_firmware_v1.0.bin' -X DELETE
+```
+
+**Response:** `200 OK` on success. `404 Not Found` if the file does not exist.
+
+---
+
+## List all files
+
+```
+GET /files/
+```
+
+Returns all uploaded files as a JSON array.
+
+```bash
+curl 'http://localhost:7557/files/'
+```
+
+---
+
+## Find files by query
+
+```
+GET /files/?query=<query>
+```
+
+Finds files matching a MongoDB-style query against the GridFS files collection.
+
+**Find a file by name:**
+
+```bash
+curl 'http://localhost:7557/files/?query=%7B%22filename%22%3A%22new_firmware_v1.0.bin%22%7D'
+```
+
+---
+
+## Common file types
+
+The `fileType` header value follows the TR-069 specification for file type codes:
+
+| Value | Description |
+|-------|-------------|
+| `1 Firmware Upgrade Image` | Device firmware binary. |
+| `2 Web Content` | Web UI content. |
+| `3 Vendor Configuration File` | Vendor-specific configuration. |
+| `4 Tone File` | Tone/audio file. |
+| `5 Ringer File` | Ringer/audio file. |
+
+---
+
+## File metadata
+
+Each file stored in GridFS includes a `metadata` object with the fields provided during upload:
+
+<ResponseField name="filename" type="string">
+  The file name as provided in the URL path.
+</ResponseField>
+
+<ResponseField name="metadata.fileType" type="string">
+  The TR-069 file type string.
+</ResponseField>
+
+<ResponseField name="metadata.oui" type="string">
+  The device OUI this file is intended for.
+</ResponseField>
+
+<ResponseField name="metadata.productClass" type="string">
+  The product class this file is intended for.
+</ResponseField>
+
+<ResponseField name="metadata.version" type="string">
+  Firmware version string (for firmware images).
+</ResponseField>

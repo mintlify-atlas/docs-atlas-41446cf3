@@ -1,0 +1,267 @@
+---
+title: "Sandbox API"
+description: "Complete reference for the GenieACS provision and virtual parameter sandbox execution environment."
+---
+
+Provision scripts and virtual parameter scripts run inside a secure execution environment backed by Node.js `vm.Script`. The sandbox exposes a small set of purpose-built globals and enforces a deterministic, replay-safe execution model.
+
+## Execution model
+
+The sandbox uses a **replay-based** approach to bridge the gap between a synchronous scripting API and the asynchronous, multi-round-trip nature of CWMP.
+
+<Steps>
+  <Step title="Script runs and declares its data needs">
+    The script executes and calls `declare()` to describe which parameters it
+    wants to read or write. These are recorded as declarations, not immediately
+    resolved.
+  </Step>
+  <Step title="commit() triggers a fetch cycle">
+    When `commit()` is called — either explicitly or implicitly when a declared
+    parameter's attribute is first accessed — the script throws an internal
+    sentinel symbol and exits immediately.
+  </Step>
+  <Step title="The session engine fulfills the declarations">
+    GenieACS processes the collected declarations and issues the necessary CWMP
+    RPCs (GetParameterValues, SetParameterValues, AddObject, etc.) to the device.
+  </Step>
+  <Step title="The script is re-run from the beginning">
+    Once the RPCs complete, the script starts over from line 1. Earlier
+    `declare()` calls that were already satisfied return their cached results
+    immediately. The script progresses further than before.
+  </Step>
+  <Step title="Repeat until the script runs to completion">
+    This cycle repeats until the script runs to the end without throwing. At that
+    point all declarations have been fulfilled and the session proceeds.
+  </Step>
+</Steps>
+
+<Warning>
+  Because a script may execute multiple times in a single session, any code with
+  observable side effects (such as calling `log()`) will run on each replay. The
+  system guarantees that data-model mutations are idempotent, but your own logic
+  must be written with repeated execution in mind.
+</Warning>
+
+### Determinism across replays
+
+Two measures ensure that replaying a script with the same inputs always produces the same outputs:
+
+- **`Math.random()`** is replaced with a seeded pseudo-random number generator. The seed is derived from the device ID, so results are consistent for a given device across replays in the same session.
+- **`Date.now()`** is controlled by the session context. All calls within a session return a stable timestamp, accessible via the `now` global.
+
+### Script timeout
+
+Each individual run of the script is limited to **50 milliseconds** of CPU time. Long-running synchronous computations will cause the script to fault. Use `ext()` for any operation that requires I/O or significant processing time.
+
+---
+
+## Global variables
+
+### `args`
+
+An array of arguments passed to the provision when it was assigned to a preset. For virtual parameter scripts, `args` holds metadata about the current declare/get state instead.
+
+```javascript
+// Access provision arguments
+const channel = args[0];
+const ssid = args[1];
+```
+
+### `now`
+
+The current session timestamp in milliseconds (Unix epoch). This value is stable for the duration of a session.
+
+```javascript
+declare("Reboot", null, {value: Date.now() - (300 * 1000)});
+```
+
+---
+
+## Built-in functions
+
+### `declare(path, timestamps, values)`
+
+Declares a parameter to be read, written, or both. This is the primary way a script interacts with device data.
+
+```javascript
+declare(path, timestamps, values)
+```
+
+| Argument     | Type     | Description                                                                           |
+| ------------ | -------- | ------------------------------------------------------------------------------------- |
+| `path`       | `string` | The TR-069 parameter path. May include wildcards (`*`) and alias filters (`[k:v]`).  |
+| `timestamps` | `object` | Minimum freshness requirements per attribute, as Unix timestamps. Pass `null` to skip. |
+| `values`     | `object` | Attribute values to set. Pass `null` to skip.                                         |
+
+**Timestamp keys** tell GenieACS how recently the attribute must have been refreshed from the device. If the stored value is older than the given timestamp, a new fetch is issued.
+
+**Value keys** specify what to write to the device.
+
+The valid attribute names for both `timestamps` and `values` are:
+
+<AccordionGroup>
+  <Accordion title="value">
+    A `[value, type]` pair where type is an XSD type string (e.g.
+    `"xsd:string"`, `"xsd:unsignedInt"`). If you supply a plain value instead of
+    an array, the type is inferred from the parameter's existing type.
+
+    Not available for objects or object instances.
+
+    ```javascript
+    // Read: require a value fetched within the last second
+    let serial = declare("Device.DeviceInfo.SerialNumber", {value: 1});
+
+    // Write: set a value
+    declare("Device.LANDevice.1.WLANConfiguration.1.SSID", null, {value: serial.value[0]});
+    ```
+  </Accordion>
+  <Accordion title="writable">
+    Boolean. For regular parameters, whether the value can be written. For
+    objects, whether instances can be added. For object instances, whether the
+    instance can be deleted.
+  </Accordion>
+  <Accordion title="object">
+    Boolean. `true` if this path refers to an object or object instance,
+    `false` for leaf parameters.
+  </Accordion>
+  <Accordion title="path">
+    Special attribute. In `timestamps`, a recent timestamp causes GenieACS to
+    re-discover all child instances matching the path (useful after a factory
+    reset, or to detect new instances). In `values`, an integer specifies the
+    desired number of instances — used to create or delete object instances. See
+    [path expressions](/scripting/path-expressions) for details.
+  </Accordion>
+</AccordionGroup>
+
+**Return value:** A [`ParameterWrapper`](#parameterwrapper) instance.
+
+```javascript
+// Example: Setting the SSID as the last 6 characters of the serial number
+let serial = declare("Device.DeviceInfo.SerialNumber", {value: 1});
+declare("Device.LANDevice.1.WLANConfiguration.1.SSID", null, {value: serial.value[0]});
+```
+
+---
+
+### `clear(path, timestamp, attributes)`
+
+Invalidates the locally-cached copy of parameters matching `path` whose last-refresh timestamp is older than `timestamp`. Child parameters are also invalidated.
+
+The most common use case is clearing the entire cached data model after a factory reset, so GenieACS re-discovers everything from scratch:
+
+```javascript
+// Example: Clear cached device data model
+// Make sure to apply only on "0 BOOTSTRAP" event
+clear("Device", Date.now());
+clear("InternetGatewayDevice", Date.now());
+```
+
+---
+
+### `commit()`
+
+Explicitly flushes the pending declarations and triggers a CWMP fetch/write cycle. In most scripts you do not need to call this directly — it is invoked implicitly when you access any attribute on a value returned by `declare()`, and at the end of the script.
+
+Call `commit()` explicitly only when you need strict ordering: for example, when you must read a parameter before deciding what to write to a different parameter.
+
+```javascript
+// Explicitly commit to ensure the read happens before the write
+commit();
+```
+
+<Warning>
+  Do not call `declare()` inside a `try/catch` block. The replay mechanism works
+  by throwing an internal symbol; catching it will break script execution.
+</Warning>
+
+---
+
+### `ext(file, function, ...args)`
+
+Calls a function in an [extension](/scripting/extensions) module and returns the result. Extension calls are cached per session revision, so replays do not issue duplicate calls.
+
+```javascript
+const res = ext("ext-sample", "latlong", "arg1", "arg2");
+log(JSON.stringify(res));
+```
+
+See [Extensions](/scripting/extensions) for how to write extension modules.
+
+---
+
+### `log(message)`
+
+Writes a string to the `genieacs-cwmp` access log. Intended for debugging.
+
+```javascript
+log("Provisioning device: " + serial.value[0]);
+```
+
+<Note>
+  Because scripts can run multiple times per session, you may see multiple log
+  entries for a single session. This is expected behavior.
+</Note>
+
+---
+
+## ParameterWrapper
+
+`declare()` returns a `ParameterWrapper` object that provides lazy access to parameter attributes. Accessing any attribute on it implicitly calls `commit()` if there are pending declarations.
+
+### Attribute accessors
+
+The available accessors mirror the attribute names passed to `declare()`:
+
+| Accessor    | Type                  | Description                                          |
+| ----------- | --------------------- | ---------------------------------------------------- |
+| `.value`    | `[value, type]`       | The parameter value and its XSD type string.         |
+| `.writable` | `boolean`             | Whether the parameter is writable.                   |
+| `.object`   | `boolean`             | Whether this path refers to an object.               |
+| `.path`     | `string`              | The resolved concrete path of the first match.       |
+| `.size`     | `number \| undefined` | The number of parameters matching the path.          |
+
+For an exact path (no wildcards or aliases), access attributes directly on the wrapper:
+
+```javascript
+let serial = declare("Device.DeviceInfo.SerialNumber", {value: 1});
+log(serial.value[0]);  // The value
+log(serial.path);      // "Device.DeviceInfo.SerialNumber"
+```
+
+### Iterating multiple results
+
+When the path contains wildcards or alias filters, the wrapper implements the iterator protocol. Use `for...of` to visit each matching parameter:
+
+```javascript
+let hosts = declare("InternetGatewayDevice.LANDevice.1.Hosts.Host.*", {value: 1});
+for (const host of hosts) {
+  log(host.path + " => " + host.value[0]);
+}
+```
+
+The `.size` property gives the number of matching parameters without iterating:
+
+```javascript
+log("Found " + hosts.size + " hosts");
+```
+
+---
+
+## Virtual parameter scripts
+
+Virtual parameter scripts share the same sandbox API but have two differences from provision scripts:
+
+- **Return value is required.** The script must return an object describing the parameter:
+
+  ```javascript
+  return {
+    writable: true,
+    value: ["someValue", "xsd:string"]
+  };
+  ```
+
+- **`args` is not user-supplied.** Instead, `args` holds the declare/current state passed in by the session engine.
+
+<Note>
+  For full details on virtual parameters, see [Virtual Parameters](/device-management/virtual-parameters).
+</Note>

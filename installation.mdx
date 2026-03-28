@@ -1,0 +1,240 @@
+---
+title: "Production Installation"
+description: "Install and configure GenieACS for production deployments on Linux with systemd."
+---
+
+This guide walks through installing GenieACS on a single Linux server that uses systemd as its init system.
+
+The four GenieACS services are independent of each other and may be installed on different servers. You may also run multiple instances of each in a load-balancing or failover setup.
+
+<Warning>
+  For production deployments, configure TLS and change `UI_JWT_SECRET` to a unique and secure string. See the [TLS/HTTPS](/configuration/tls-https) guide for details.
+</Warning>
+
+## Prerequisites
+
+<AccordionGroup>
+  <Accordion title="Node.js 12.13 or later">
+    GenieACS requires Node.js 12.13 and up. Refer to [nodejs.org](https://nodejs.org/) for installation instructions.
+  </Accordion>
+  <Accordion title="MongoDB 3.6 or later">
+    GenieACS requires MongoDB 3.6 and up. Refer to [mongodb.com](https://www.mongodb.com/) for installation instructions.
+  </Accordion>
+</AccordionGroup>
+
+## Install GenieACS
+
+Install GenieACS globally from npm:
+
+```bash
+sudo npm install -g genieacs
+```
+
+## Configure systemd
+
+<Steps>
+  <Step title="Create a system user">
+    Create a dedicated system user to run the GenieACS daemons:
+
+    ```bash
+    sudo useradd --system --no-create-home --user-group genieacs
+    ```
+  </Step>
+
+  <Step title="Create the extensions directory">
+    Create `/opt/genieacs/ext/` to store extension scripts:
+
+    ```bash
+    mkdir /opt/genieacs
+    mkdir /opt/genieacs/ext
+    chown genieacs:genieacs /opt/genieacs/ext
+    ```
+  </Step>
+
+  <Step title="Create the environment file">
+    Create `/opt/genieacs/genieacs.env` to hold configuration options passed to GenieACS as environment variables.
+
+    Save the following as `/opt/genieacs/genieacs.env`:
+
+    ```bash
+    GENIEACS_CWMP_ACCESS_LOG_FILE=/var/log/genieacs/genieacs-cwmp-access.log
+    GENIEACS_NBI_ACCESS_LOG_FILE=/var/log/genieacs/genieacs-nbi-access.log
+    GENIEACS_FS_ACCESS_LOG_FILE=/var/log/genieacs/genieacs-fs-access.log
+    GENIEACS_UI_ACCESS_LOG_FILE=/var/log/genieacs/genieacs-ui-access.log
+    GENIEACS_DEBUG_FILE=/var/log/genieacs/genieacs-debug.yaml
+    NODE_OPTIONS=--enable-source-maps
+    GENIEACS_EXT_DIR=/opt/genieacs/ext
+    ```
+
+    <Note>
+      See [Environment variables](/configuration/environment-variables) for a full list of available configuration options.
+    </Note>
+  </Step>
+
+  <Step title="Generate a secure JWT secret">
+    Generate a cryptographically secure random value and append it to the environment file:
+
+    ```bash
+    node -e "console.log(\"GENIEACS_UI_JWT_SECRET=\" + require('crypto').randomBytes(128).toString('hex'))" >> /opt/genieacs/genieacs.env
+    ```
+
+    <Warning>
+      The `GENIEACS_UI_JWT_SECRET` value signs browser cookies. Never use a weak or guessable value in production. The command above generates a 256-character hex string using Node.js's built-in `crypto` module.
+    </Warning>
+  </Step>
+
+  <Step title="Set file permissions">
+    Restrict access to the environment file since it contains the JWT secret:
+
+    ```bash
+    sudo chown genieacs:genieacs /opt/genieacs/genieacs.env
+    sudo chmod 600 /opt/genieacs/genieacs.env
+    ```
+  </Step>
+
+  <Step title="Create the logs directory">
+    ```bash
+    mkdir /var/log/genieacs
+    chown genieacs:genieacs /var/log/genieacs
+    ```
+  </Step>
+
+  <Step title="Create systemd unit files">
+    Create a unit file for each of the four GenieACS services. Each file uses the `EnvironmentFile` directive to load configuration from `/opt/genieacs/genieacs.env`.
+
+    <Note>
+      If `systemctl edit --force --full` fails, create the unit files manually at `/etc/systemd/system/<service-name>.service`.
+    </Note>
+
+    **genieacs-cwmp**
+
+    Run the following command, then paste the unit file content into the editor and save:
+
+    ```bash
+    sudo systemctl edit --force --full genieacs-cwmp
+    ```
+
+    ```cfg
+    [Unit]
+    Description=GenieACS CWMP
+    After=network.target
+
+    [Service]
+    User=genieacs
+    EnvironmentFile=/opt/genieacs/genieacs.env
+    ExecStart=/usr/bin/genieacs-cwmp
+
+    [Install]
+    WantedBy=default.target
+    ```
+
+    **genieacs-nbi**
+
+    ```bash
+    sudo systemctl edit --force --full genieacs-nbi
+    ```
+
+    ```cfg
+    [Unit]
+    Description=GenieACS NBI
+    After=network.target
+
+    [Service]
+    User=genieacs
+    EnvironmentFile=/opt/genieacs/genieacs.env
+    ExecStart=/usr/bin/genieacs-nbi
+
+    [Install]
+    WantedBy=default.target
+    ```
+
+    **genieacs-fs**
+
+    ```bash
+    sudo systemctl edit --force --full genieacs-fs
+    ```
+
+    ```cfg
+    [Unit]
+    Description=GenieACS FS
+    After=network.target
+
+    [Service]
+    User=genieacs
+    EnvironmentFile=/opt/genieacs/genieacs.env
+    ExecStart=/usr/bin/genieacs-fs
+
+    [Install]
+    WantedBy=default.target
+    ```
+
+    **genieacs-ui**
+
+    ```bash
+    sudo systemctl edit --force --full genieacs-ui
+    ```
+
+    ```cfg
+    [Unit]
+    Description=GenieACS UI
+    After=network.target
+
+    [Service]
+    User=genieacs
+    EnvironmentFile=/opt/genieacs/genieacs.env
+    ExecStart=/usr/bin/genieacs-ui
+
+    [Install]
+    WantedBy=default.target
+    ```
+  </Step>
+
+  <Step title="Configure log rotation">
+    Save the following as `/etc/logrotate.d/genieacs`:
+
+    ```cfg
+    /var/log/genieacs/*.log /var/log/genieacs/*.yaml {
+        daily
+        rotate 30
+        compress
+        delaycompress
+        dateext
+    }
+    ```
+  </Step>
+
+  <Step title="Enable and start services">
+    Enable each service to start on boot, then start it and verify its status:
+
+    ```bash
+    sudo systemctl enable genieacs-cwmp
+    sudo systemctl start genieacs-cwmp
+    sudo systemctl status genieacs-cwmp
+
+    sudo systemctl enable genieacs-nbi
+    sudo systemctl start genieacs-nbi
+    sudo systemctl status genieacs-nbi
+
+    sudo systemctl enable genieacs-fs
+    sudo systemctl start genieacs-fs
+    sudo systemctl status genieacs-fs
+
+    sudo systemctl enable genieacs-ui
+    sudo systemctl start genieacs-ui
+    sudo systemctl status genieacs-ui
+    ```
+
+    Review the status output for each service to confirm it is running successfully. Use `journalctl -u genieacs-cwmp` (or the relevant service name) to view process logs.
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="TLS/HTTPS" icon="lock" href="/configuration/tls-https">
+    Encrypt traffic between CPE devices and the CWMP service, and secure the UI with TLS.
+  </Card>
+  <Card title="Environment variables" icon="sliders" href="/configuration/environment-variables">
+    Full reference for all configuration options available to each service.
+  </Card>
+</CardGroup>

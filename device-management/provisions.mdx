@@ -1,0 +1,202 @@
+---
+title: "Provisions"
+description: "Write JavaScript scripts to configure CPE devices declaratively using GenieACS provisions."
+---
+
+Provisions are JavaScript scripts executed server-side on a per-device basis. They enable complex provisioning scenarios such as automated firmware upgrade rollout, conditional configuration, and integration with external systems.
+
+Provisions are mapped to devices using [presets](/device-management/presets). Any configuration that can be expressed as a preset configuration entry can also be expressed in a provision script — and provisions support more complex logic. It is recommended to use provision scripts for all configuration.
+
+<Note>
+  Provision scripts may execute multiple times within a single session. All data
+  model-mutating operations are idempotent, but a script as a whole may not be.
+  GenieACS repeatedly runs the script until a stable state is reached with no
+  further side effects.
+</Note>
+
+## Passing arguments
+
+When assigning a provision to a preset, you may pass arguments to the script. These are accessible via the global `args` variable inside the script.
+
+## Built-in functions
+
+### `declare(path, timestamps, values)`
+
+Declares parameter values to be set and specifies constraints on how recently the parameter (or its attributes) must have been refreshed from the device.
+
+If the given timestamp is lower than the timestamp of the last refresh, `declare()` returns the cached value. Otherwise, the value is fetched from the device before being returned.
+
+**Parameters**
+
+- `path` — The parameter path. May contain wildcards (`*`) or alias filters (`[name:value]`).
+- `timestamps` — An object mapping attribute names to Unix timestamps indicating the minimum acceptable age of the cached data.
+- `values` — An object mapping attribute names to the values to set.
+
+**Attributes available in `timestamps` and `values`**
+
+| Attribute   | Type              | Description |
+|-------------|-------------------|-------------|
+| `value`     | `[value, type]`   | The parameter value and its XSD type. If not an array, type is inferred. Not available for objects or object instances. |
+| `writable`  | boolean           | Whether the parameter (or object) is writable / allows adding instances / allows deletion. |
+| `object`    | boolean           | `true` if this is an object or object instance. |
+| `path`      | string            | Refers to the presence of parameters matching the path. Use to trigger rediscovery of object instances or to create/delete instances. |
+
+**Return value**
+
+An iterator over all parameters matching the given path. Each item exposes a `path` attribute plus any attributes named in the `declare()` call. The iterator also has convenience attribute accessors, which are useful when you expect a single parameter (i.e., the path contains no wildcards or aliases).
+
+```javascript
+// Example: Setting the SSID as the last 6 characters of the serial number
+let serial = declare("Device.DeviceInfo.SerialNumber", {value: 1});
+declare("Device.LANDevice.1.WLANConfiguration.1.SSID", null, {value: serial.value[0]});
+```
+
+### `clear(path, timestamp)`
+
+Invalidates the database copy of parameters (and their children) matching the given path whose last refresh timestamp is less than the given timestamp.
+
+```javascript
+// Example: Clear cached device data model
+// Make sure to apply only on "0 BOOTSTRAP" event
+clear("Device", Date.now());
+clear("InternetGatewayDevice", Date.now());
+```
+
+### `commit()`
+
+Commits pending declarations and performs any necessary sync with the device.
+
+In most cases this is not required — it is called implicitly at the end of the script and whenever any property of the promise-like object returned by `declare()` is accessed. Call `commit()` explicitly only when you need precise control over the order in which parameters are configured.
+
+### `ext(file, function, arg1, arg2, ...)`
+
+Executes an extension script and returns the result. The first argument is the script filename, the second is the function name within that script, and any remaining arguments are passed to that function.
+
+See [Extensions](/scripting/extensions) for details on writing extension scripts.
+
+### `log(message)`
+
+Prints a string to the genieacs-cwmp access log. Intended for debugging.
+
+<Note>
+  You may see multiple log entries for a single `log()` call because the script
+  can execute multiple times in a session. See the [FAQ](/operations/faq) for
+  details.
+</Note>
+
+---
+
+## Path format
+
+A parameter path may contain a **wildcard** (`*`) or an **alias filter** (`[name:value]`).
+
+- A wildcard segment matches zero or more parameters at that position in the path.
+- An alias filter behaves like a wildcard but additionally filters child parameters by the given key-value pair(s).
+
+For example, the following path returns a list of `ExternalIPAddress` parameters where the sibling `AddressingType` is `"DHCP"`:
+
+```
+Device.WANDevice.1.WANConnectionDevice.1.WANIPConnection.[AddressingType:DHCP].ExternalIPAddress
+```
+
+Multiple key-value pairs, multiple filters, and combinations of filters and wildcards are all supported.
+
+---
+
+## Creating and deleting object instances
+
+Provisions are declarative: rather than issuing explicit create or delete commands, you specify the desired number of instances. GenieACS calculates whether it needs to create or delete instances to satisfy the declaration.
+
+```javascript
+// Example: Ensure we have one and only one WANIPConnection object
+declare("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.*", null, {path: 1});
+```
+
+Alias filters may be used as the last path segment to constrain the declaration to matching instances:
+
+```javascript
+// Ensure that *all* other instances are deleted
+declare("InternetGatewayDevice.X_BROADCOM_COM_IPAddrAccCtrl.X_BROADCOM_COM_IPAddrAccCtrlListCfg.[]", null, {path: 0});
+
+// Add the two entries we care about
+declare("InternetGatewayDevice.X_BROADCOM_COM_IPAddrAccCtrl.X_BROADCOM_COM_IPAddrAccCtrlListCfg.[SourceIPAddress:192.168.1.0,SourceNetMask:255.255.255.0]",  {path: now}, {path: 1});
+declare("InternetGatewayDevice.X_BROADCOM_COM_IPAddrAccCtrl.X_BROADCOM_COM_IPAddrAccCtrlListCfg.[SourceIPAddress:172.16.12.0,SourceNetMask:255.255.0.0]", {path: now}, {path: 1});
+```
+
+---
+
+## Special GenieACS parameters
+
+In addition to the device's own TR-069 data model, GenieACS exposes its own set of special parameters accessible from provisions.
+
+### DeviceID
+
+A read-only sub-tree containing device identity fields:
+
+| Parameter | Description |
+|-----------|-------------|
+| `DeviceID.ID` | Unique device identifier |
+| `DeviceID.SerialNumber` | Serial number |
+| `DeviceID.ProductClass` | Product class |
+| `DeviceID.OUI` | Organizationally Unique Identifier |
+| `DeviceID.Manufacturer` | Manufacturer name |
+
+### Tags
+
+The `Tags` root parameter exposes device tags in the data model. Each tag appears as a child parameter with a boolean value.
+
+- Setting a tag to `false` deletes it.
+- Setting a non-existing tag to `true` creates it.
+
+```javascript
+// Example: Remove "tag1", add "tag2", and read "tag3"
+declare("Tags.tag1", null, {value: false});
+declare("Tags.tag2", null, {value: true});
+let tag3 = declare("Tags.tag3", {value: 1});
+```
+
+### Reboot
+
+The `Reboot` parameter holds the timestamp of the last reboot command. Setting a timestamp value larger than the current value triggers a reboot.
+
+```javascript
+// Example: Reboot the device only if it hasn't been rebooted in the past 300 seconds
+declare("Reboot", null, {value: Date.now() - (300 * 1000)});
+```
+
+### FactoryReset
+
+Works like `Reboot` but triggers a factory reset.
+
+```javascript
+// Example: Default the device to factory settings
+declare("FactoryReset", null, {value: Date.now()});
+```
+
+### Downloads
+
+The `Downloads` sub-tree holds information about download commands. Each download is represented as an instance (e.g. `Downloads.1`) containing parameters such as `Download` (timestamp), `LastFileType`, and `LastFileName`. The parameters `FileType`, `FileName`, `TargetFileName`, and `Download` are writable and can be used to trigger a new download.
+
+```javascript
+declare("Downloads.[FileType:1 Firmware Upgrade Image]", {path: 1}, {path: 1});
+declare("Downloads.[FileType:1 Firmware Upgrade Image].FileName", {value: 1}, {value: "firmware-2017.01.tar"});
+declare("Downloads.[FileType:1 Firmware Upgrade Image].Download", {value: 1}, {value: Date.now()});
+```
+
+Common file types:
+
+| File type string | Description |
+|------------------|-------------|
+| `1 Firmware Upgrade Image` | Firmware image |
+| `2 Web Content` | Web content |
+| `3 Vendor Configuration File` | Vendor configuration |
+| `4 Tone File` | Tone file |
+| `5 Ringer File` | Ringer file |
+
+<Warning>
+  Pushing a file to the device is often a service-interrupting operation. It is
+  recommended to only trigger downloads on specific events such as `1 BOOT` or
+  during a predetermined maintenance window. After the CPE finishes downloading
+  and applying the file, it sends a `7 TRANSFER COMPLETE` event, which you can
+  use to trigger a reboot.
+</Warning>

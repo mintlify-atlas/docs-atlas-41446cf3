@@ -1,0 +1,190 @@
+---
+title: "Environment Variables"
+description: "Complete reference for all GenieACS configuration environment variables."
+---
+
+All GenieACS environment variables must be prefixed with `GENIEACS_`. For example, the variable `MONGODB_CONNECTION_URL` is set as `GENIEACS_MONGODB_CONNECTION_URL`.
+
+<Note>
+  Configuration priority (highest to lowest): CLI arguments > environment variables > config file (`config/config.json`) > defaults. An option set at a higher priority level cannot be overridden by a lower priority source.
+</Note>
+
+<Tip>
+  When running GenieACS under systemd, create a file at `/opt/genieacs/genieacs.env` containing your environment variable assignments, then reference it in each service unit with `EnvironmentFile=/opt/genieacs/genieacs.env`. This keeps all configuration in one place and avoids hardcoding values in unit files.
+</Tip>
+
+## Global
+
+These variables apply to all GenieACS services.
+
+<ParamField path="env.GENIEACS_MONGODB_CONNECTION_URL" type="string" default="mongodb://127.0.0.1/genieacs">
+  MongoDB connection string. All four GenieACS services connect to MongoDB using this URL.
+</ParamField>
+
+<ParamField path="env.GENIEACS_EXT_DIR" type="string" default="<installation dir>/config/ext">
+  The directory from which extension scripts are loaded.
+</ParamField>
+
+<ParamField path="env.GENIEACS_EXT_TIMEOUT" type="number" default="3000">
+  Timeout in milliseconds to allow for calls to extensions to return a response.
+</ParamField>
+
+<ParamField path="env.GENIEACS_DEBUG_FILE" type="string">
+  File path to write CPE debug logs. When unset, debug logging is disabled.
+</ParamField>
+
+<ParamField path="env.GENIEACS_DEBUG_FORMAT" type="string" default="yaml">
+  Format for debug log output. Valid values are `yaml` and `json`.
+</ParamField>
+
+<ParamField path="env.GENIEACS_LOG_FORMAT" type="string" default="simple">
+  Format for process log entries written to `CWMP_LOG_FILE`, `NBI_LOG_FILE`, `FS_LOG_FILE`, and `UI_LOG_FILE`. Valid values are `simple` and `json`.
+</ParamField>
+
+<ParamField path="env.GENIEACS_ACCESS_LOG_FORMAT" type="string" default="simple">
+  Format for access log entries written to `CWMP_ACCESS_LOG_FILE`, `NBI_ACCESS_LOG_FILE`, `FS_ACCESS_LOG_FILE`, and `UI_ACCESS_LOG_FILE`. Valid values are `simple` and `json`.
+</ParamField>
+
+---
+
+## CWMP service
+
+The CWMP service handles TR-069 device connections on port 7547.
+
+<ParamField path="env.GENIEACS_CWMP_WORKER_PROCESSES" type="number" default="0">
+  Number of worker processes to spawn for `genieacs-cwmp`. A value of `0` spawns one worker per available CPU core.
+</ParamField>
+
+<ParamField path="env.GENIEACS_CWMP_PORT" type="number" default="7547">
+  TCP port that `genieacs-cwmp` listens on.
+</ParamField>
+
+<ParamField path="env.GENIEACS_CWMP_INTERFACE" type="string" default="::">
+  Network interface address that `genieacs-cwmp` binds to. The default `::` binds to all interfaces (IPv4 and IPv6).
+</ParamField>
+
+<ParamField path="env.GENIEACS_CWMP_SSL_CERT" type="string">
+  Path to the TLS certificate file for `genieacs-cwmp`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_CWMP_SSL_KEY" type="string">
+  Path to the TLS private key file for `genieacs-cwmp`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_CWMP_LOG_FILE" type="string">
+  File path for `genieacs-cwmp` process event logs. If omitted, logs are written to stderr.
+</ParamField>
+
+<ParamField path="env.GENIEACS_CWMP_ACCESS_LOG_FILE" type="string">
+  File path for `genieacs-cwmp` incoming request logs. If omitted, logs are written to stdout.
+</ParamField>
+
+---
+
+## NBI service
+
+The NBI (Northbound Interface) service provides a REST API on port 7557.
+
+<ParamField path="env.GENIEACS_NBI_WORKER_PROCESSES" type="number" default="0">
+  Number of worker processes to spawn for `genieacs-nbi`. A value of `0` spawns one worker per available CPU core.
+</ParamField>
+
+<ParamField path="env.GENIEACS_NBI_PORT" type="number" default="7557">
+  TCP port that `genieacs-nbi` listens on.
+</ParamField>
+
+<ParamField path="env.GENIEACS_NBI_INTERFACE" type="string" default="::">
+  Network interface address that `genieacs-nbi` binds to. The default `::` binds to all interfaces (IPv4 and IPv6).
+</ParamField>
+
+<ParamField path="env.GENIEACS_NBI_SSL_CERT" type="string">
+  Path to the TLS certificate file for `genieacs-nbi`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_NBI_SSL_KEY" type="string">
+  Path to the TLS private key file for `genieacs-nbi`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_NBI_LOG_FILE" type="string">
+  File path for `genieacs-nbi` process event logs. If omitted, logs are written to stderr.
+</ParamField>
+
+<ParamField path="env.GENIEACS_NBI_ACCESS_LOG_FILE" type="string">
+  File path for `genieacs-nbi` incoming request logs. If omitted, logs are written to stdout.
+</ParamField>
+
+---
+
+## FS service
+
+The FS (File Server) service serves firmware images and configuration files to devices on port 7567.
+
+<ParamField path="env.GENIEACS_FS_WORKER_PROCESSES" type="number" default="0">
+  Number of worker processes to spawn for `genieacs-fs`. A value of `0` spawns one worker per available CPU core.
+</ParamField>
+
+<ParamField path="env.GENIEACS_FS_PORT" type="number" default="7567">
+  TCP port that `genieacs-fs` listens on.
+</ParamField>
+
+<ParamField path="env.GENIEACS_FS_INTERFACE" type="string" default="::">
+  Network interface address that `genieacs-fs` binds to. The default `::` binds to all interfaces (IPv4 and IPv6).
+</ParamField>
+
+<ParamField path="env.GENIEACS_FS_SSL_CERT" type="string">
+  Path to the TLS certificate file for `genieacs-fs`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_FS_SSL_KEY" type="string">
+  Path to the TLS private key file for `genieacs-fs`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_FS_LOG_FILE" type="string">
+  File path for `genieacs-fs` process event logs. If omitted, logs are written to stderr.
+</ParamField>
+
+<ParamField path="env.GENIEACS_FS_ACCESS_LOG_FILE" type="string">
+  File path for `genieacs-fs` incoming request logs. If omitted, logs are written to stdout.
+</ParamField>
+
+<ParamField path="env.GENIEACS_FS_URL_PREFIX" type="string">
+  The URL prefix (e.g. `https://example.com:7567/`) used when generating file URLs for TR-069 Download requests. Set this when `genieacs-fs` and `genieacs-cwmp` are behind a proxy or running on different servers. When unset, the URL is auto-generated based on the hostname from the ACS URL, `FS_PORT`, and whether SSL is enabled for `genieacs-fs`.
+</ParamField>
+
+---
+
+## UI service
+
+The UI service provides the web administration interface on port 3000.
+
+<ParamField path="env.GENIEACS_UI_WORKER_PROCESSES" type="number" default="0">
+  Number of worker processes to spawn for `genieacs-ui`. A value of `0` spawns one worker per available CPU core.
+</ParamField>
+
+<ParamField path="env.GENIEACS_UI_PORT" type="number" default="3000">
+  TCP port that `genieacs-ui` listens on.
+</ParamField>
+
+<ParamField path="env.GENIEACS_UI_INTERFACE" type="string" default="::">
+  Network interface address that `genieacs-ui` binds to. The default `::` binds to all interfaces (IPv4 and IPv6).
+</ParamField>
+
+<ParamField path="env.GENIEACS_UI_SSL_CERT" type="string">
+  Path to the TLS certificate file for `genieacs-ui`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_UI_SSL_KEY" type="string">
+  Path to the TLS private key file for `genieacs-ui`. If omitted, the service uses plain HTTP.
+</ParamField>
+
+<ParamField path="env.GENIEACS_UI_LOG_FILE" type="string">
+  File path for `genieacs-ui` process event logs. If omitted, logs are written to stderr.
+</ParamField>
+
+<ParamField path="env.GENIEACS_UI_ACCESS_LOG_FILE" type="string">
+  File path for `genieacs-ui` incoming request logs. If omitted, logs are written to stdout.
+</ParamField>
+
+<ParamField path="env.GENIEACS_UI_JWT_SECRET" type="string" required>
+  The key used for signing JWT tokens stored in browser cookies. Accepts up to 64 characters. This must be set in production — if left unset, sessions will not persist across service restarts.
+</ParamField>

@@ -1,0 +1,176 @@
+---
+title: "Devices"
+description: "Query and manage CPE devices through the NBI REST API."
+---
+
+## Query devices
+
+```
+GET /devices/?query=<query>
+```
+
+<ParamField query="query" type="string">
+  A URL-encoded MongoDB-style JSON filter. See the [API Overview](/api/overview) for supported operators.
+</ParamField>
+
+<ParamField query="projection" type="string">
+  Comma-separated list of parameter paths to include in each device document. Reduces response size.
+</ParamField>
+
+<ParamField query="sort" type="string">
+  URL-encoded JSON object with field names and sort direction (`1` ascending, `-1` descending).
+</ParamField>
+
+<ParamField query="skip" type="number">
+  Number of results to skip. Used for pagination.
+</ParamField>
+
+<ParamField query="limit" type="number">
+  Maximum number of results to return.
+</ParamField>
+
+**Find a device by ID:**
+
+```json
+{"_id": "202BC1-BM632w-000000"}
+```
+
+```bash
+curl -i 'http://localhost:7557/devices/?query=%7B%22_id%22%3A%22202BC1-BM632w-000000%22%7D'
+```
+
+**Find a device by MAC address:**
+
+```json
+{
+  "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.MACAddress": "20:2B:C1:E0:06:65"
+}
+```
+
+```bash
+curl -i 'http://localhost:7557/devices/?query=%7B%22InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.MACAddress%22%3A%2220:2B:C1:E0:06:65%22%7D'
+```
+
+**Find devices that have not sent an inform in the last 7 days:**
+
+```json
+{
+  "_lastInform": {
+    "$lt": "2017-12-11 13:16:23 +0000"
+  }
+}
+```
+
+```bash
+curl -i 'http://localhost:7557/devices/?query=%7B%22_lastInform%22%3A%7B%22%24lt%22%3A%222017-12-11%2013%3A16%3A23%20%2B0000%22%7D%7D'
+```
+
+**Return specific parameters using projection:**
+
+```bash
+curl -i 'http://localhost:7557/devices?query=%7B%22_id%22%3A%22202BC1-BM632w-000000%22%7D&projection=InternetGatewayDevice.DeviceInfo.ModelName,InternetGatewayDevice.DeviceInfo.Manufacturer'
+```
+
+The `projection` parameter is a comma-separated list of the parameters to receive in the response.
+
+---
+
+## Delete a device
+
+```
+DELETE /devices/<device_id>
+```
+
+Deletes a device from the database.
+
+<ParamField path="device_id" type="string" required>
+  The ID of the device to delete.
+</ParamField>
+
+<Note>
+  The device will be registered again when it next contacts the ACS (for example, on its next periodic inform).
+</Note>
+
+```bash
+curl -X DELETE -i 'http://localhost:7557/devices/202BC1-BM632w-000001'
+```
+
+**Response:** `200 OK` on success. `503 Service Unavailable` if the device is currently in a CWMP session.
+
+---
+
+## Assign a tag
+
+```
+POST /devices/<device_id>/tags/<tag>
+```
+
+Assigns a tag to a device. Has no effect if the tag already exists on the device.
+
+<ParamField path="device_id" type="string" required>
+  The ID of the device.
+</ParamField>
+
+<ParamField path="tag" type="string" required>
+  The tag name to assign.
+</ParamField>
+
+```bash
+curl -i 'http://localhost:7557/devices/202BC1-BM632w-000000/tags/testing' -X POST
+```
+
+**Response:** `200 OK` on success. `404 Not Found` if the device does not exist.
+
+---
+
+## Remove a tag
+
+```
+DELETE /devices/<device_id>/tags/<tag>
+```
+
+Removes a tag from a device.
+
+<ParamField path="device_id" type="string" required>
+  The ID of the device.
+</ParamField>
+
+<ParamField path="tag" type="string" required>
+  The tag name to remove.
+</ParamField>
+
+```bash
+curl -i 'http://localhost:7557/devices/202BC1-BM632w-000000/tags/testing' -X DELETE
+```
+
+**Response:** `200 OK` on success. `404 Not Found` if the device does not exist.
+
+---
+
+## Device document structure
+
+A device document is a nested JSON object reflecting the TR-069 parameter tree. Key top-level fields:
+
+<ResponseField name="_id" type="string" required>
+  Device identifier in the format `OUI-ProductClass-SerialNumber` (e.g., `202BC1-BM632w-000000`).
+</ResponseField>
+
+<ResponseField name="_lastInform" type="string">
+  Timestamp of the most recent inform from the device.
+</ResponseField>
+
+<ResponseField name="_tags" type="string[]">
+  Array of tag strings assigned to the device.
+</ResponseField>
+
+<ResponseField name="DeviceID" type="object">
+  Identity parameters: `Manufacturer`, `OUI`, `ProductClass`, `SerialNumber`.
+</ResponseField>
+
+<ResponseField name="InternetGatewayDevice" type="object">
+  TR-069 parameter tree (TR-098 data model). Present on devices using the `InternetGatewayDevice` root object.
+</ResponseField>
+
+<ResponseField name="Device" type="object">
+  TR-069 parameter tree (TR-181 data model). Present on devices using the `Device` root object.
+</ResponseField>

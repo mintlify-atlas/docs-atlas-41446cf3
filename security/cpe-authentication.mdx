@@ -1,0 +1,75 @@
+---
+title: "CPE Authentication"
+description: "Configure authentication between CPE devices and the GenieACS CWMP server."
+---
+
+By default, GenieACS accepts any incoming connection via HTTP/HTTPS and responds to it. To enforce authentication, configure the `cwmp.auth` key in **Admin -> Config**.
+
+## Device credentials
+
+The following TR-069 data model parameters hold the username and password a CPE uses to authenticate against the ACS. The password is redacted in the UI but can be set.
+
+| Parameter | Description |
+|-----------|-------------|
+| `Device.ManagementServer.Username` | CPE username (TR-181) |
+| `Device.ManagementServer.Password` | CPE password (TR-181, write-only) |
+| `InternetGatewayDevice.ManagementServer.Username` | CPE username (TR-098) |
+| `InternetGatewayDevice.ManagementServer.Password` | CPE password (TR-098, write-only) |
+
+## Supported HTTP auth methods
+
+GenieACS supports both **HTTP Basic** and **HTTP Digest** authentication for CPE-to-ACS connections.
+
+## Configuring `cwmp.auth`
+
+<Steps>
+  <Step title="Open the Config page">
+    Go to **Admin -> Config** in the GenieACS UI.
+  </Step>
+  <Step title="Create a new config entry">
+    Click **New config** at the bottom of the page.
+  </Step>
+  <Step title="Set the key">
+    Enter `cwmp.auth` as the key.
+  </Step>
+  <Step title="Set the value">
+    Enter a boolean or expression as the value (see options below).
+  </Step>
+</Steps>
+
+### Boolean values
+
+| Value | Behavior |
+|-------|----------|
+| `true` | Accept all incoming connections regardless of credentials |
+| `false` | Deny all incoming connections |
+
+### The `AUTH()` function
+
+The `AUTH()` function accepts two parameters — username and password — and checks them against the credentials presented by the incoming request.
+
+**Fixed credentials** — accept only devices that authenticate with a specific username and password:
+
+```sql
+AUTH("fixed-username", "fixed-password")
+```
+
+**Device data model credentials** — accept devices that authenticate using the username and password stored in their own data model:
+
+```sql
+AUTH(Device.ManagementServer.Username, Device.ManagementServer.Password)
+```
+
+### The `EXT()` function
+
+The `EXT()` function calls an extension script, allowing credentials to be fetched from an external source at authentication time. This enables dynamic per-device credential lookup:
+
+```sql
+AUTH(DeviceID.SerialNumber, EXT("authenticate", "getPassword", DeviceID.SerialNumber))
+```
+
+In this example, the device authenticates using its serial number as the username, and the password is looked up by calling the `getPassword` function in the `authenticate` extension script.
+
+<Note>
+  Extension scripts live in the directory specified by the `GENIEACS_EXT_DIR` environment variable (default: `<installation dir>/config/ext`).
+</Note>

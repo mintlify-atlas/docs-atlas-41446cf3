@@ -1,0 +1,105 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "GenieACS",
+  "projectDescription": "A high-performance TR-069 Auto Configuration Server (ACS) for remote management of CPE devices such as routers and modems at scale.",
+  "theme": "aspen",
+  "primaryColor": "#a42b55",
+  "lightColor": "#e2d3b2",
+  "darkColor": "#c68a8c",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/tls-https",
+              "configuration/services"
+            ]
+          },
+          {
+            "group": "Device Management",
+            "pages": [
+              "device-management/provisions",
+              "device-management/virtual-parameters",
+              "device-management/presets",
+              "device-management/fault-management"
+            ]
+          },
+          {
+            "group": "Scripting & Extensions",
+            "pages": [
+              "scripting/extensions",
+              "scripting/sandbox-api",
+              "scripting/path-expressions"
+            ]
+          },
+          {
+            "group": "Security & Operations",
+            "pages": [
+              "security/cpe-authentication",
+              "security/roles-and-permissions",
+              "operations/logging",
+              "operations/faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "NBI REST API",
+            "pages": [
+              "api/overview",
+              "api/devices",
+              "api/tasks",
+              "api/presets",
+              "api/provisions",
+              "api/files",
+              "api/faults"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "TR-069/CWMP protocol support for remote device management",
+    "Declarative provisioning engine with JavaScript scripting",
+    "Northbound REST API (NBI) for OSS/BSS integration",
+    "Virtual parameters for computed/derived device values",
+    "Extension system for external integrations",
+    "Role-based access control with expression-based permissions",
+    "Scales to millions of concurrent CPE devices",
+    "Multi-service architecture: CWMP, NBI, FS, UI"
+  ],
+  "publicApiSurface": [
+    "GET /<collection>/?query=<query> — Search devices, tasks, presets, objects",
+    "POST /devices/<device_id>/tasks — Enqueue device tasks",
+    "POST /tasks/<task_id>/retry — Retry a failed task",
+    "DELETE /tasks/<task_id> — Delete a task",
+    "DELETE /faults/<fault_id> — Delete a fault",
+    "DELETE /devices/<device_id> — Remove a device",
+    "POST /devices/<device_id>/tags/<tag> — Assign tag to device",
+    "DELETE /devices/<device_id>/tags/<tag> — Remove tag from device",
+    "PUT /presets/<preset_name> — Create or update preset",
+    "DELETE /presets/<preset_name> — Delete preset",
+    "PUT /files/<file_name> — Upload firmware/config file",
+    "DELETE /files/<file_name> — Delete file",
+    "GET /files/ — List all files",
+    "PUT /provisions/<name> — Create or update provision script",
+    "DELETE /provisions/<name> — Delete provision script",
+    "GET /provisions/ — List all provisions"
+  ]
+}

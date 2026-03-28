@@ -1,0 +1,89 @@
+---
+title: "Logging"
+description: "Configure and interpret GenieACS logs for monitoring and troubleshooting."
+---
+
+Each GenieACS service produces two independent log streams:
+
+| Stream | Default destination | Purpose |
+|--------|---------------------|---------|
+| **Process log** | `stderr` | Application events (startup, errors, session activity) |
+| **Access log** | `stdout` | Incoming HTTP requests |
+
+## Log format
+
+Both streams support two formats, controlled by environment variables.
+
+### Process log format
+
+Set with `GENIEACS_LOG_FORMAT`. Applies to the process log of all four services.
+
+| Value | Description |
+|-------|-------------|
+| `simple` | Human-readable text (default) |
+| `json` | Structured JSON — recommended for log aggregation pipelines |
+
+### Access log format
+
+Set with `GENIEACS_ACCESS_LOG_FORMAT`. Applies to the access log of all four services.
+
+| Value | Description |
+|-------|-------------|
+| `simple` | Human-readable text (default) |
+| `json` | Structured JSON — recommended for log aggregation pipelines |
+
+## Per-service log file variables
+
+By default, logs go to `stderr` (process) and `stdout` (access). To write logs to files instead, set the corresponding environment variable for each service.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GENIEACS_CWMP_LOG_FILE` | unset (stderr) | Process log for genieacs-cwmp |
+| `GENIEACS_CWMP_ACCESS_LOG_FILE` | unset (stdout) | Access log for genieacs-cwmp |
+| `GENIEACS_NBI_LOG_FILE` | unset (stderr) | Process log for genieacs-nbi |
+| `GENIEACS_NBI_ACCESS_LOG_FILE` | unset (stdout) | Access log for genieacs-nbi |
+| `GENIEACS_FS_LOG_FILE` | unset (stderr) | Process log for genieacs-fs |
+| `GENIEACS_FS_ACCESS_LOG_FILE` | unset (stdout) | Access log for genieacs-fs |
+| `GENIEACS_UI_LOG_FILE` | unset (stderr) | Process log for genieacs-ui |
+| `GENIEACS_UI_ACCESS_LOG_FILE` | unset (stdout) | Access log for genieacs-ui |
+
+## Debug logging
+
+The debug log records the raw CWMP SOAP messages exchanged between GenieACS and CPE devices. It is useful for diagnosing protocol-level issues.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GENIEACS_DEBUG_FILE` | unset | Path to write the CWMP protocol trace file |
+| `GENIEACS_DEBUG_FORMAT` | `yaml` | Format for debug log entries: `yaml` or `json` |
+
+<Warning>
+  Debug logging generates large files quickly. Enable it only when actively troubleshooting a specific device or session, and disable it when done.
+</Warning>
+
+## Viewing logs with systemd
+
+If GenieACS runs as systemd units, use `journalctl` to tail the logs:
+
+```bash
+journalctl -u genieacs-cwmp -f
+```
+
+```bash
+journalctl -u genieacs-nbi -f
+```
+
+## Log rotation with logrotate
+
+When writing logs to files, configure log rotation to prevent unbounded disk usage. The following `logrotate` configuration rotates logs daily, keeps 30 days of compressed history, and uses date-based filenames:
+
+```
+/var/log/genieacs/*.log /var/log/genieacs/*.yaml {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    dateext
+}
+```
+
+Place this configuration in `/etc/logrotate.d/genieacs`.

@@ -1,0 +1,92 @@
+---
+title: "TLS / HTTPS"
+description: "Configure TLS encryption for GenieACS services."
+---
+
+Each GenieACS service supports TLS independently. To enable HTTPS for a service, set its `SSL_CERT` and `SSL_KEY` environment variables to the paths of your certificate and private key files. If either variable is omitted, that service will use plain HTTP.
+
+<Warning>
+  In production, always enable TLS for the CWMP service (device traffic traverses your network) and the UI service (admin credentials are transmitted at login). Leaving these on plain HTTP exposes sensitive data and credentials.
+</Warning>
+
+## Certificate and key variables
+
+| Service | Certificate variable | Key variable |
+|---------|---------------------|--------------|
+| CWMP | `GENIEACS_CWMP_SSL_CERT` | `GENIEACS_CWMP_SSL_KEY` |
+| NBI | `GENIEACS_NBI_SSL_CERT` | `GENIEACS_NBI_SSL_KEY` |
+| FS | `GENIEACS_FS_SSL_CERT` | `GENIEACS_FS_SSL_KEY` |
+| UI | `GENIEACS_UI_SSL_CERT` | `GENIEACS_UI_SSL_KEY` |
+
+## Generating a certificate
+
+<Steps>
+  <Step title="Generate a self-signed certificate">
+    For testing purposes, you can generate a self-signed certificate with `openssl`:
+
+    ```bash
+    openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+    ```
+
+    <Note>
+      Self-signed certificates are suitable for development and testing only. CPE devices or browsers will reject them unless you explicitly trust the certificate. Use a certificate from a trusted CA in production.
+    </Note>
+  </Step>
+
+  <Step title="Place certificate files in a secure location">
+    Copy the certificate and key to a location accessible by the GenieACS process:
+
+    ```bash
+    cp cert.pem /etc/ssl/certs/genieacs.crt
+    cp key.pem /etc/ssl/private/genieacs.key
+    chmod 600 /etc/ssl/private/genieacs.key
+    ```
+  </Step>
+
+  <Step title="Configure the environment variables">
+    Add the certificate paths to your `genieacs.env` file:
+
+    ```bash
+    GENIEACS_CWMP_SSL_CERT=/etc/ssl/certs/genieacs.crt
+    GENIEACS_CWMP_SSL_KEY=/etc/ssl/private/genieacs.key
+    GENIEACS_NBI_SSL_CERT=/etc/ssl/certs/genieacs.crt
+    GENIEACS_NBI_SSL_KEY=/etc/ssl/private/genieacs.key
+    GENIEACS_FS_SSL_CERT=/etc/ssl/certs/genieacs.crt
+    GENIEACS_FS_SSL_KEY=/etc/ssl/private/genieacs.key
+    GENIEACS_UI_SSL_CERT=/etc/ssl/certs/genieacs.crt
+    GENIEACS_UI_SSL_KEY=/etc/ssl/private/genieacs.key
+    ```
+
+    You can share the same certificate across all services, or use separate certificates per service.
+  </Step>
+
+  <Step title="Restart the services">
+    Restart each GenieACS service to apply the new configuration:
+
+    ```bash
+    systemctl restart genieacs-cwmp genieacs-nbi genieacs-fs genieacs-ui
+    ```
+  </Step>
+</Steps>
+
+## Configuring specific services
+
+You do not need to enable TLS on every service. For example, if NBI and FS are only accessible on a private network, you might enable TLS only for CWMP and UI:
+
+```bash
+# Only CWMP and UI use TLS
+GENIEACS_CWMP_SSL_CERT=/etc/ssl/certs/genieacs.crt
+GENIEACS_CWMP_SSL_KEY=/etc/ssl/private/genieacs.key
+GENIEACS_UI_SSL_CERT=/etc/ssl/certs/genieacs.crt
+GENIEACS_UI_SSL_KEY=/etc/ssl/private/genieacs.key
+```
+
+## File server URL prefix
+
+When `genieacs-fs` is behind a reverse proxy, or when it runs on a different server from `genieacs-cwmp`, the URL embedded in TR-069 Download requests may not reflect the publicly reachable address. Use `GENIEACS_FS_URL_PREFIX` to set the correct base URL explicitly:
+
+```bash
+GENIEACS_FS_URL_PREFIX=https://acs.example.com:7567/
+```
+
+When this variable is unset, GenieACS auto-generates the URL from the hostname in the ACS URL, the configured `FS_PORT`, and whether SSL is enabled for the FS service.

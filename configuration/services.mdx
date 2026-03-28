@@ -1,0 +1,84 @@
+---
+title: "Service architecture"
+description: "Understanding the GenieACS multi-service architecture and how services work together."
+---
+
+GenieACS consists of four independent network-facing services that share a single MongoDB database. Each service can be run on the same host or distributed across multiple servers.
+
+```
+              +------------+
+CPE Devices --->| CWMP (7547)|-+
+              +------------+ |
+              +-----------+  |     +---------+
+CPE Devices --->| FS (7567) |--+---->| MongoDB |
+              +-----------+  |     +---------+
+              +-----------+  |
+OSS / Scripts ->| NBI (7557)|--+
+              +-----------+  |
+              +-----------+  |
+Administrators->| UI (3000) |--+
+              +-----------+
+```
+
+## The four services
+
+<CardGroup cols={2}>
+  <Card title="CWMP" icon="router">
+    **Port 7547** — The core TR-069 protocol server. CPE devices (routers, modems, gateways) connect here to report their state and receive configuration instructions via SOAP/XML over HTTP. This is the only service that communicates directly with managed devices during a session.
+  </Card>
+  <Card title="NBI" icon="plug">
+    **Port 7557** — Northbound Interface. A REST API for external systems (OSS/BSS, scripts, automation tools) to manage devices, tasks, presets, and configuration programmatically.
+  </Card>
+  <Card title="FS" icon="file">
+    **Port 7567** — File Server. Serves firmware images and configuration files to CPE devices during TR-069 Download operations. Files are stored in and read from MongoDB GridFS.
+  </Card>
+  <Card title="UI" icon="monitor">
+    **Port 3000** — Web interface. A Koa-based backend serving a Mithril.js single-page application for administrators to browse devices, manage configuration, and trigger operations.
+  </Card>
+</CardGroup>
+
+## Process model
+
+All four services follow the same process model. A **primary process** forks a configurable number of **worker processes** using Node.js `cluster`. Each worker connects to MongoDB independently and starts its own HTTP(S) server.
+
+The number of workers is controlled per service by the `*_WORKER_PROCESSES` environment variable. Setting it to `0` (the default) spawns one worker per available CPU core.
+
+<Note>
+  Because services share no in-process state, all cross-process coordination goes through MongoDB (the `cache` and `locks` collections). Each worker process is fully independent.
+</Note>
+
+## Shared MongoDB
+
+All services read and write to the same MongoDB instance, identified by `GENIEACS_MONGODB_CONNECTION_URL`. MongoDB serves as the single source of truth for device data, configuration, tasks, files, and the distributed cache and lock collections used for coordination between worker processes.
+
+## Default ports and bindings
+
+| Service | Default port | Default interface |
+|---------|-------------|-------------------|
+| CWMP | 7547 | `::` (all interfaces) |
+| NBI | 7557 | `::` (all interfaces) |
+| FS | 7567 | `::` (all interfaces) |
+| UI | 3000 | `::` (all interfaces) |
+
+The default interface `::` binds to all IPv4 and IPv6 addresses. Use the `*_INTERFACE` variables to restrict a service to a specific address.
+
+## Distributed deployment
+
+Services can be deployed on separate servers. Because all coordination passes through MongoDB, there are no direct service-to-service connections required — with one exception: the CWMP service generates download URLs that point to the FS service. If CWMP and FS run on different hosts or are behind a proxy, set `GENIEACS_FS_URL_PREFIX` to the publicly reachable URL of the FS service so that devices can reach it.
+
+<Tip>
+  For load balancing, you can run multiple instances of any service. Because workers are stateless (all state lives in MongoDB), a standard HTTP load balancer can distribute requests across instances without sticky sessions.
+</Tip>
+
+## Service dependencies
+
+<Steps>
+  <Step title="Start MongoDB">
+    All GenieACS services require MongoDB to be running and reachable at `GENIEACS_MONGODB_CONNECTION_URL` before they start.
+  </Step>
+  <Step title="Start CWMP, NBI, FS, and UI">
+    The four GenieACS services have no startup ordering dependency on each other. They can be started in any order or simultaneously.
+  </Step>
+</Steps>
+
+

@@ -1,0 +1,78 @@
+---
+title: "Welcome to GenieACS"
+description: "A high-performance TR-069 Auto Configuration Server for remote management of CPE devices at scale."
+---
+
+GenieACS is a battle-tested TR-069 Auto Configuration Server (ACS) built to manage hundreds of thousands — and potentially millions — of CPE devices such as routers, modems, and gateways. It uses a declarative, fault-tolerant provisioning engine to automate complex device configuration at scale.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get GenieACS running in minutes with npm and MongoDB
+  </Card>
+  <Card title="Installation Guide" icon="server" href="/installation">
+    Production deployment with systemd on Linux
+  </Card>
+  <Card title="Provisions" icon="code" href="/device-management/provisions">
+    Write JavaScript scripts to configure devices declaratively
+  </Card>
+  <Card title="NBI REST API" icon="plug" href="/api/overview">
+    Integrate external systems via the Northbound Interface
+  </Card>
+</CardGroup>
+
+## What is GenieACS?
+
+GenieACS implements the **CWMP (TR-069)** protocol, enabling your network operations center to remotely:
+
+- Read and write any parameter in a device's TR-069 data model
+- Push firmware upgrades and configuration files
+- Trigger reboots and factory resets
+- Monitor device state and connectivity
+- Automate complex provisioning workflows with JavaScript
+
+## Architecture overview
+
+GenieACS consists of four independent services that share a single MongoDB database:
+
+<CardGroup cols={2}>
+  <Card title="CWMP (port 7547)" icon="network-wired">
+    The TR-069 protocol server. CPE devices connect here to report state and receive configuration instructions.
+  </Card>
+  <Card title="NBI (port 7557)" icon="arrow-right-arrow-left">
+    The Northbound Interface REST API for OSS/BSS systems, scripts, and automation to manage devices programmatically.
+  </Card>
+  <Card title="FS (port 7567)" icon="file-arrow-down">
+    The file server. Delivers firmware images and configuration files to CPE devices during download operations.
+  </Card>
+  <Card title="UI (port 3000)" icon="display">
+    The web interface for administrators to browse devices, manage configuration, and trigger operations.
+  </Card>
+</CardGroup>
+
+## Key features
+
+- **Declarative provisioning** — Write intent-based scripts; GenieACS determines the minimal set of TR-069 RPCs needed
+- **Fault-tolerant sessions** — Sessions survive TCP disconnects and resume seamlessly
+- **Virtual parameters** — Expose computed or derived values as if they were real device parameters
+- **Extension system** — Call privileged Node.js scripts from sandboxed provision code
+- **Expression-based access control** — Fine-grained RBAC with dynamic filter expressions
+- **Scales to millions** — Multi-process architecture with MongoDB-backed distributed locking
+
+<Steps>
+  <Step title="Install prerequisites">
+    Install [Node.js 12.13+](https://nodejs.org/) and [MongoDB 3.6+](https://www.mongodb.com/)
+  </Step>
+  <Step title="Install GenieACS">
+    Run `sudo npm install -g genieacs` to install from npm
+  </Step>
+  <Step title="Configure and start services">
+    Set environment variables and start the four GenieACS services
+  </Step>
+  <Step title="Access the web UI">
+    Open `http://localhost:3000` and complete the initialization wizard
+  </Step>
+</Steps>
+
+<Note>
+  GenieACS v1.3 is the current development branch. For production deployments, see [installation](/installation) for recommended configuration including TLS and JWT secrets.
+</Note>

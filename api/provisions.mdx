@@ -1,0 +1,101 @@
+---
+title: "Provisions"
+description: "Create and manage provision scripts via the NBI REST API."
+---
+
+Provision scripts are JavaScript programs that run inside GenieACS during a CWMP device session. They use the sandbox API (`declare`, `commit`, `ext`) to read and write device parameters, tag devices, trigger downloads, and more.
+
+<Note>
+  See the [provisions guide](/device-management/provisions) for details on writing provision scripts and the available sandbox API.
+</Note>
+
+## Create or update a provision
+
+```
+PUT /provisions/<name>
+```
+
+Creates or replaces a provision script. The request body is the raw JavaScript source code — not JSON.
+
+<ParamField path="name" type="string" required>
+  A unique name for the provision.
+</ParamField>
+
+**Request body:** Raw JavaScript source code (plain text).
+
+**Response:** `200 OK` on success. `400 Bad Request` if the script has a syntax error.
+
+```bash
+curl -X PUT -i 'http://localhost:7557/provisions/mynewprovision' \
+  --data 'log("Provision started at " + now);'
+```
+
+<Note>
+  The script is validated for syntax errors before being stored. A parse error returns `400` with the error message.
+</Note>
+
+---
+
+## Delete a provision
+
+```
+DELETE /provisions/<name>
+```
+
+<ParamField path="name" type="string" required>
+  The name of the provision to delete.
+</ParamField>
+
+```bash
+curl -X DELETE -i 'http://localhost:7557/provisions/mynewprovision'
+```
+
+---
+
+## List provisions
+
+```
+GET /provisions/
+```
+
+Returns all stored provisions as a JSON array. Each entry includes `_id` (the provision name) and `script` (the source code).
+
+```bash
+curl -X GET -i 'http://localhost:7557/provisions/'
+```
+
+---
+
+## Virtual parameters
+
+Virtual parameters are scripts that expose computed or derived values as if they were real TR-069 parameters under the `VirtualParameters.*` namespace. They follow the same API pattern as provisions.
+
+### Create or update a virtual parameter
+
+```
+PUT /virtual_parameters/<name>
+```
+
+<ParamField path="name" type="string" required>
+  A unique name for the virtual parameter.
+</ParamField>
+
+**Request body:** Raw JavaScript source code.
+
+**Response:** `200 OK` on success. `400 Bad Request` if the script has a syntax error.
+
+### Delete a virtual parameter
+
+```
+DELETE /virtual_parameters/<name>
+```
+
+### List virtual parameters
+
+```
+GET /virtual_parameters/
+```
+
+<Note>
+  The NBI path for virtual parameters uses an underscore: `/virtual_parameters/`. This maps to the `virtualParameters` MongoDB collection.
+</Note>

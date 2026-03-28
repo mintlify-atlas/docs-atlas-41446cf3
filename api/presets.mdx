@@ -1,0 +1,207 @@
+---
+title: "Presets"
+description: "Create and manage device configuration presets via the NBI REST API."
+---
+
+Presets are rules that assign configuration or provision scripts to devices based on a precondition filter, an optional schedule, and optional TR-069 event triggers. When a device session starts, GenieACS evaluates all presets whose precondition matches the device and applies their configurations.
+
+## Create or update a preset
+
+```
+PUT /presets/<preset_name>
+```
+
+Creates a new preset or replaces an existing one with the same name.
+
+<ParamField path="preset_name" type="string" required>
+  A unique name for the preset.
+</ParamField>
+
+**Request body:** JSON object representing the preset.
+
+**Response:** `200 OK` on success.
+
+**Example — set a 5-minute inform interval for all devices tagged "test":**
+
+```json
+{
+  "weight": 0,
+  "precondition": "{\"_tags\": \"test\"}",
+  "configurations": [
+    {
+      "type": "value",
+      "name": "InternetGatewayDevice.ManagementServer.PeriodicInformEnable",
+      "value": "true"
+    },
+    {
+      "type": "value",
+      "name": "InternetGatewayDevice.ManagementServer.PeriodicInformInterval",
+      "value": "300"
+    }
+  ]
+}
+```
+
+```bash
+curl -i 'http://localhost:7557/presets/inform' \
+-X PUT \
+--data '{"weight": 0, "precondition": "{\"_tags\": \"test\"}", "configurations": [{"type": "value", "name": "InternetGatewayDevice.ManagementServer.PeriodicInformEnable", "value": "true"}, {"type": "value", "name": "InternetGatewayDevice.ManagementServer.PeriodicInformInterval", "value": "300"}]}'
+```
+
+---
+
+## Delete a preset
+
+```
+DELETE /presets/<preset_name>
+```
+
+<ParamField path="preset_name" type="string" required>
+  The name of the preset to delete.
+</ParamField>
+
+```bash
+curl -i 'http://localhost:7557/presets/inform' -X DELETE
+```
+
+---
+
+## List presets
+
+```
+GET /presets/
+```
+
+Returns all presets as a JSON array.
+
+```bash
+curl 'http://localhost:7557/presets/'
+```
+
+---
+
+## Preset object fields
+
+<ResponseField name="weight" type="number" required>
+  Integer controlling evaluation priority. Presets with lower weight values are applied first.
+</ResponseField>
+
+<ResponseField name="precondition" type="string" required>
+  A **JSON-encoded string** containing a MongoDB-style filter that determines which devices the preset applies to. The value is a string (not an inline object) so it must be double-encoded.
+
+  Examples:
+  - `"{\"param\": \"value\"}"` — match devices where param equals value
+  - `"{\"_tags\": \"test\"}"` — match devices with the "test" tag
+  - `"{\"param\": \"value\", \"param2\": {\"$ne\": \"value2\"}}"` — compound filter
+
+  Supported operators: `$gt`, `$lt`, `$gte`, `$lte`, `$ne`.
+</ResponseField>
+
+<ResponseField name="configurations" type="object[]" required>
+  Array of configuration entries to apply when the preset matches. See configuration types below.
+</ResponseField>
+
+<ResponseField name="schedule" type="string">
+  Optional cron expression. When set, the preset is only applied according to this schedule.
+</ResponseField>
+
+<ResponseField name="events" type="string[]">
+  Optional array of TR-069 event codes. When set, the preset is only applied when one of these events is present in the inform.
+</ResponseField>
+
+---
+
+## Configuration entry types
+
+Each entry in the `configurations` array has a `type` field that determines its behavior.
+
+### `value` — set a parameter value
+
+```json
+{
+  "type": "value",
+  "name": "InternetGatewayDevice.ManagementServer.PeriodicInformInterval",
+  "value": "300"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | Full TR-069 parameter path. |
+| `value` | The value to set on the device. |
+
+### `provision` — run a provision script
+
+```json
+{
+  "type": "provision",
+  "name": "YourProvisionName"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | The name of a provision script stored in the `provisions` collection. |
+
+### `add_object` — add an object instance
+
+```json
+{
+  "type": "add_object",
+  "name": "object_parent",
+  "object": "object_name"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | Parent path under which the new instance will be created. |
+| `object` | The object name to add. |
+
+### `delete_object` — delete an object instance
+
+```json
+{
+  "type": "delete_object",
+  "name": "object_parent",
+  "object": "object_name"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | Parent path containing the instance. |
+| `object` | The specific instance name to delete. |
+
+---
+
+## Full configuration example
+
+```json
+[
+  {
+    "type": "value",
+    "name": "InternetGatewayDevice.ManagementServer.PeriodicInformEnable",
+    "value": "true"
+  },
+  {
+    "type": "value",
+    "name": "InternetGatewayDevice.ManagementServer.PeriodicInformInterval",
+    "value": "300"
+  },
+  {
+    "type": "delete_object",
+    "name": "object_parent",
+    "object": "object_name"
+  },
+  {
+    "type": "add_object",
+    "name": "object_parent",
+    "object": "object_name"
+  },
+  {
+    "type": "provision",
+    "name": "YourProvisionName"
+  }
+]
+```

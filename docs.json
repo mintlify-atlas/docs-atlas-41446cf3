@@ -1,122 +1,94 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "GenieACS",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#a42b55",
+    "light": "#e2d3b2",
+    "dark": "#c68a8c"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/2cc8da46-58a6-41bf-8811-2ebe5be3f6fa.jpg",
+  "logo": {
+    "light": "https://media.brand.dev/151a0327-883d-49d9-9f43-98b6efa4b48f.svg",
+    "dark": "https://media.brand.dev/151a0327-883d-49d9-9f43-98b6efa4b48f.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/genieacs/genieacs"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/genieacs/genieacs"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Configuration",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "configuration/environment-variables",
+              "configuration/tls-https",
+              "configuration/services"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Device Management",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "device-management/provisions",
+              "device-management/virtual-parameters",
+              "device-management/presets",
+              "device-management/fault-management"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Scripting & Extensions",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "scripting/extensions",
+              "scripting/sandbox-api",
+              "scripting/path-expressions"
+            ]
+          },
+          {
+            "group": "Security & Operations",
+            "pages": [
+              "security/cpe-authentication",
+              "security/roles-and-permissions",
+              "operations/logging",
+              "operations/faq"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "NBI REST API",
             "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/overview",
+              "api/devices",
+              "api/tasks",
+              "api/presets",
+              "api/provisions",
+              "api/files",
+              "api/faults"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

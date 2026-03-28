@@ -1,0 +1,119 @@
+---
+title: "Extensions"
+description: "Call privileged Node.js code from provision scripts using the GenieACS extension system."
+---
+
+Provision and virtual parameter scripts run inside a [sandbox](/scripting/sandbox-api) that has no access to the operating system, file system, or network. Extensions bridge that gap by running as fully-privileged Node.js modules that your scripts can call at runtime.
+
+A typical use case is fetching device credentials from an external database so they can be pushed to the device during provisioning.
+
+## How extensions work
+
+Extensions are loaded and executed as long-lived child processes by `genieacs-cwmp`. The parent process communicates with each child over IPC:
+
+- Processes are **lazily spawned** — a child process is started the first time a given extension file is called, then **reused** for subsequent calls.
+- Every call is assigned a unique request ID. When the child responds, the ID is used to route the result back to the correct waiting caller.
+- Extension results are **cached per session revision**. Because the sandbox may re-run a script from the beginning, a cached result is returned on replay rather than making a duplicate call.
+- If a child process disconnects or produces an error, it is killed and removed from the process table. A new process is spawned on the next call.
+
+## Configuration
+
+| Environment variable | Default         | Description                                    |
+| -------------------- | --------------- | ---------------------------------------------- |
+| `GENIEACS_EXT_DIR`   | `<installation dir>/config/ext` | Directory where extension files are located. |
+| `GENIEACS_EXT_TIMEOUT` | `3000`        | Maximum milliseconds to wait for a response.   |
+
+Create the extensions directory if it does not already exist. For production deployments this is typically `/opt/genieacs/ext/`.
+
+## Writing an extension
+
+An extension is a plain Node.js CommonJS module. Export one function for each operation you want to expose. Each exported function receives two arguments: an array of arguments forwarded from the `ext()` call, and a Node.js-style callback `(err, result)`.
+
+The example below fetches the current position of the International Space Station from a public REST API and returns the latitude and longitude as an array:
+
+```javascript ext-sample.js
+// This is an example GenieACS extension to get the current latitude/longitude
+// of the International Space Station. Why, you ask? Because why not.
+// To install, copy this file to config/ext/iss.js.
+
+"use strict";
+
+const http = require("http");
+
+let cache = null;
+let cacheExpire = 0;
+
+function latlong(args, callback) {
+  if (Date.now() < cacheExpire) return callback(null, cache);
+
+  http
+    .get("http://api.open-notify.org/iss-now.json", (res) => {
+      if (res.statusCode !== 200)
+        return callback(
+          new Error(`Request failed (status code: ${res.statusCode})`),
+        );
+
+      let rawData = "";
+      res.on("data", (chunk) => (rawData += chunk));
+
+      res.on("end", () => {
+        let pos = JSON.parse(rawData)["iss_position"];
+        cache = [+pos["latitude"], +pos["longitude"]];
+        cacheExpire = Date.now() + 10000;
+        callback(null, cache);
+      });
+    })
+    .on("error", (err) => {
+      callback(err);
+    });
+}
+
+exports.latlong = latlong;
+```
+
+Place this file at `config/ext/ext-sample.js` (or whatever name you choose — the filename is the first argument to `ext()`).
+
+<Note>
+  The `args` parameter received by each function is an array containing all
+  extra arguments passed after the function name in the `ext()` call. In the
+  example above, `args` is unused because the API takes no input.
+</Note>
+
+## Calling an extension from a provision
+
+Use the built-in `ext()` function inside any provision or virtual parameter script:
+
+```javascript
+// The arguments "arg1" and "arg2" are passed to the latlong. Though they are
+// unused in this particular example.
+const res = ext("ext-sample", "latlong", "arg1", "arg2");
+log(JSON.stringify(res));
+```
+
+The signature is:
+
+```
+ext(file, function, ...args)
+```
+
+| Argument   | Description                                                              |
+| ---------- | ------------------------------------------------------------------------ |
+| `file`     | Extension filename without the `.js` extension.                          |
+| `function` | Name of the exported function to call.                                   |
+| `...args`  | Additional arguments forwarded to the function as the `args` array.      |
+
+The return value is whatever the extension passes as the second argument to its callback.
+
+## Using extensions in auth expressions
+
+The `EXT()` function is also available inside `cwmp.auth` configuration expressions, allowing you to call extensions during device authentication. For example, to look up a device password by serial number:
+
+```
+AUTH(DeviceID.SerialNumber, EXT("authenticate", "getPassword", DeviceID.SerialNumber))
+```
+
+<Warning>
+  If an extension exceeds the configured `EXT_TIMEOUT`, the call fails with a
+  `timeout` fault and the session is terminated. Keep extension logic fast or
+  implement your own internal caching (as the sample does with `cacheExpire`).
+</Warning>

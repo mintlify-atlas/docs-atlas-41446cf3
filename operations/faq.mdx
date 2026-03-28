@@ -1,0 +1,69 @@
+---
+title: "FAQ"
+description: "Answers to common GenieACS administration questions."
+---
+
+<AccordionGroup>
+  <Accordion title="Why do I see duplicate log entries from log()?">
+    GenieACS uses a **replay-based execution model** in its sandbox. Because provisions are pure functions within a session (for example, `Date.now()` always returns the same value), the only way to guarantee the desired state has been reached is to re-run the script until no new RPCs or data model changes result from an execution. That final run — where nothing new happens — is considered a stable state. Log messages emitted on earlier runs therefore appear multiple times.
+
+    To illustrate with an example, consider this provision script:
+
+    ```javascript
+    log("Executing script");
+    declare("Device.param", null, {value: 1});
+    commit();
+    declare("Device.param", null, {value: 2});
+    ```
+
+    This sets `Device.param` to `1`, then to `2`. On the next replay it sets it back to `1`, then to `2` again. A stable state is never reached, so GenieACS executes the script repeatedly until it gives up and throws a fault.
+
+    A stable state is reached when an execution produces **no new RPCs and no changes to the data model**. In typical scripts this happens after one or two runs. The edge case above — where two conflicting declarations fight each other — should be avoided.
+  </Accordion>
+
+  <Accordion title="Configurations not pushed to device after factory reset">
+    After a factory reset, the device's parameter tree in GenieACS's database still reflects the pre-reset state. GenieACS will not re-push configuration it believes is already applied. To force rediscovery, invalidate the cached data model on the `0 BOOTSTRAP` event.
+
+    Add the following lines to your `BOOTSTRAP` provision:
+
+    ```javascript
+    const now = Date.now();
+
+    // Clear cached data model to force a refresh
+    clear("Device", now);
+    clear("InternetGatewayDevice", now);
+    ```
+
+    This marks both root parameter trees as stale, causing GenieACS to fetch the full data model from the device again during the next session.
+  </Accordion>
+
+  <Accordion title="Most device parameters are missing">
+    For performance reasons — on the server, the CPE, and the network — GenieACS only fetches the parts of the data model that are **required to satisfy the declarations in your provision scripts**. Parameters that no provision has declared will not be retrieved automatically.
+
+    To make a parameter available in the UI and in your scripts, create a declaration for it in a provision:
+
+    ```javascript
+    declare("Device.SomeParameter", {value: 1});
+    ```
+
+    See [Provisions](/device-management/provisions) for more detail on the declaration system.
+
+    If you are exploring a new device model and want to see all available parameters, refresh the root parameter (for example, `InternetGatewayDevice`) from the GenieACS UI. You typically only need to do this once per CPE model.
+  </Accordion>
+
+  <Accordion title="How do I trigger a connection request?">
+    A connection request instructs a CPE device to initiate a new CWMP session immediately, without waiting for its next periodic inform interval.
+
+    Send a connection request via the NBI by posting a task with the `connection_request` flag:
+
+    ```bash
+    POST /devices/<id>/tasks?connection_request
+    ```
+
+    See [Tasks API](/api/tasks) for the full task API reference, including how to create tasks and poll for their results.
+  </Accordion>
+
+  <Accordion title="What CWMP versions are supported?">
+    GenieACS supports **CWMP versions 1.0 through 1.4** (TR-069 and its amendments). The SOAP layer in `lib/soap.ts` dispatches on the CWMP version declared in the Inform envelope and handles version-specific message formats accordingly.
+  </Accordion>
+</AccordionGroup>

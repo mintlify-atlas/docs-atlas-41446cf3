@@ -1,0 +1,63 @@
+---
+title: "Roles and Permissions"
+description: "Configure role-based access control for GenieACS UI users."
+---
+
+The GenieACS UI enforces role-based access control (RBAC). Users are assigned roles, roles are composed of permissions, and permissions are expression-based rules that determine what each user can see and do.
+
+## How it works
+
+Access is **denied by default**. Permissions explicitly grant access to resources. The `Authorizer` class evaluates all permissions assigned to a user's roles and allows an operation only when a matching permission grants it.
+
+Users, roles, and permissions are stored in the `users` and `permissions` MongoDB collections.
+
+## Session security
+
+The UI authenticates users with **JWT tokens stored in browser cookies**. Passwords are hashed with **PBKDF2-SHA512 using 10,000 iterations**.
+
+<Warning>
+  You must set a strong `GENIEACS_UI_JWT_SECRET` environment variable in production. This secret signs browser session cookies. The default is unset (insecure) — leaving it unset means sessions are not cryptographically protected.
+</Warning>
+
+The `UI_JWT_SECRET` string can be up to 64 characters in length.
+
+## Managing users
+
+Create and manage users in the UI under **Admin -> Users**. Each user account has:
+
+- A **username**
+- A **password** (stored as a PBKDF2-SHA512 hash)
+- One or more assigned **roles**
+
+## Permissions
+
+Each permission entry in the `permissions` collection specifies:
+
+| Field | Description |
+|-------|-------------|
+| **Resource type** | The collection the permission applies to: `devices`, `presets`, `provisions`, `files`, `users`, `config`, `permissions`, `faults`, `tasks`, etc. |
+| **Allowed operations** | One or more of: `read`, `write`, `delete` |
+| **Filter expression** (optional) | Limits which records are visible to the user |
+| **Validate expression** (optional) | Limits what values can be written |
+
+Filter and validate values use the same expression language used elsewhere in GenieACS (SQL-like syntax with device parameters, operators, and functions).
+
+## Roles
+
+A role is a named collection of permissions. Users can be assigned multiple roles; the `Authorizer` combines all permissions from all assigned roles when evaluating access.
+
+### Example role configurations
+
+**Read-only operator** — can view devices but cannot modify them:
+- `devices`: `read` (no filter, no validate)
+
+**Provisioning operator** — can manage presets and provisions but cannot access user or config resources:
+- `presets`: `read`, `write`, `delete`
+- `provisions`: `read`, `write`, `delete`
+
+**Administrator** — full access to all resources:
+- All resource types: `read`, `write`, `delete`
+
+<Note>
+  Roles themselves are not stored as named objects in MongoDB. They are a logical grouping: multiple permission documents share the same role name string, and users reference that role name in their user document.
+</Note>

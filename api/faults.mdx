@@ -1,0 +1,86 @@
+---
+title: "Faults"
+description: "Query and manage device faults via the NBI REST API."
+---
+
+GenieACS records a fault when a task fails during a CWMP session. Faults are keyed by device and channel. The default channel is `default`; task faults use the channel `task_<task_id>`.
+
+<Note>
+  See the [fault management guide](/device-management/fault-management) for a full explanation of the fault lifecycle and retry behaviour.
+</Note>
+
+## Query faults
+
+```
+GET /faults/?query=<query>
+```
+
+Returns all faults matching the given query.
+
+<ParamField query="query" type="string">
+  A URL-encoded MongoDB-style JSON filter.
+</ParamField>
+
+**Get all faults for a device:**
+
+```bash
+curl 'http://localhost:7557/faults/?query=%7B%22device%22%3A%22202BC1-BM632w-000000%22%7D'
+```
+
+Decoded query:
+
+```json
+{"device": "202BC1-BM632w-000000"}
+```
+
+---
+
+## Delete a fault
+
+```
+DELETE /faults/<fault_id>
+```
+
+Deletes (clears) a fault record. The device will no longer be considered faulted on that channel.
+
+<ParamField path="fault_id" type="string" required>
+  The fault ID in the format `<device_id>:<channel>`. The default channel is `default`.
+</ParamField>
+
+```bash
+curl -i 'http://localhost:7557/faults/202BC1-BM632w-000000:default' -X DELETE
+```
+
+**Response:** `200 OK` on success. `503 Service Unavailable` if the device is currently in a CWMP session.
+
+---
+
+## Fault object structure
+
+<ResponseField name="_id" type="string" required>
+  Fault identifier in the format `<device_id>:<channel>` (e.g., `202BC1-BM632w-000000:default`).
+</ResponseField>
+
+<ResponseField name="device" type="string" required>
+  The ID of the device this fault belongs to.
+</ResponseField>
+
+<ResponseField name="channel" type="string" required>
+  The fault channel. `default` for general faults; `task_<task_id>` for task-specific faults.
+</ResponseField>
+
+<ResponseField name="code" type="string">
+  The TR-069 fault code or GenieACS internal error code.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable error message describing the fault.
+</ResponseField>
+
+<ResponseField name="timestamp" type="string">
+  ISO 8601 timestamp of when the fault occurred.
+</ResponseField>
+
+<ResponseField name="retries" type="number">
+  Number of times this fault has been retried.
+</ResponseField>

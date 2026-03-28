@@ -1,0 +1,261 @@
+---
+title: "Tasks"
+description: "Enqueue and manage device tasks via the NBI REST API."
+---
+
+Tasks are operations sent to a CPE device — reading or writing parameters, rebooting, triggering a firmware download, and more. Tasks are queued in MongoDB and executed during the next CWMP session, or immediately if a connection request is triggered.
+
+## Enqueue a task
+
+```
+POST /devices/<device_id>/tasks
+```
+
+Enqueues a task for a device and optionally triggers an immediate connection request.
+
+<ParamField path="device_id" type="string" required>
+  The ID of the target device.
+</ParamField>
+
+<ParamField query="connection_request" type="boolean">
+  When present, GenieACS sends a TR-069 connection request to the device to execute the task immediately.
+</ParamField>
+
+<ParamField query="timeout" type="number">
+  Timeout in milliseconds to wait for the device session to complete. If not specified, the server default (`cwmp.deviceOnlineThreshold`, default 4000 ms) is used.
+</ParamField>
+
+**Response codes:**
+
+| Code | Meaning |
+|------|---------|
+| `200` | Task executed successfully in a completed session. |
+| `202` | Task queued; will be processed at the next inform. |
+| `404` | Device not found. |
+| `503` | Device is currently in a CWMP session; cannot acquire lock. |
+
+The response body is the task object as stored in the database, including its `_id` field.
+
+---
+
+## Query tasks
+
+```
+GET /tasks/?query=<query>
+```
+
+Lists tasks matching a MongoDB-style query.
+
+**Show pending tasks for a device:**
+
+```json
+{"device": "202BC1-BM632w-000000"}
+```
+
+```bash
+curl -i 'http://localhost:7557/tasks/?query=%7B%22device%22%3A%22202BC1-BM632w-000000%22%7D'
+```
+
+---
+
+## Retry a task
+
+```
+POST /tasks/<task_id>/retry
+```
+
+Clears the fault associated with a failed task so it will be retried at the next inform.
+
+<ParamField path="task_id" type="string" required>
+  The `_id` of the task as returned by `GET /tasks`.
+</ParamField>
+
+```bash
+curl -i 'http://localhost:7557/tasks/5403908ef28ea3a25c138adc/retry' -X POST
+```
+
+---
+
+## Delete a task
+
+```
+DELETE /tasks/<task_id>
+```
+
+Deletes a task from the queue.
+
+<ParamField path="task_id" type="string" required>
+  The `_id` of the task as returned by `GET /tasks`.
+</ParamField>
+
+```bash
+curl -i 'http://localhost:7557/tasks/5403908ef28ea3a25c138adc' -X DELETE
+```
+
+**Response:** `503 Service Unavailable` if the device is currently in a session.
+
+---
+
+## Task types
+
+### `getParameterValues`
+
+Retrieves the current value of one or more TR-069 parameters from the device. After the task completes, fetch the device document to read the updated values.
+
+```json
+{
+  "name": "getParameterValues",
+  "parameterNames": [
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnectionNumberOfEntries",
+    "InternetGatewayDevice.Time.NTPServer1",
+    "InternetGatewayDevice.Time.Status"
+  ]
+}
+```
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-96318REF-SR360NA0A4%252D0003196/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name": "getParameterValues", "parameterNames": ["InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnectionNumberOfEntries", "InternetGatewayDevice.Time.NTPServer1", "InternetGatewayDevice.Time.Status"] }'
+```
+
+After the task executes, retrieve the updated values:
+
+```json
+{"_id": "00236a-96318REF-SR360NA0A4%2D0003196"}
+```
+
+```bash
+curl -i 'http://localhost:7557/devices/?query=%7B%22_id%22%3A%2200236a-96318REF-SR360NA0A4%252D0003196%22%7D'
+```
+
+---
+
+### `refreshObject`
+
+Refreshes all parameters under a given object path. Pass an empty string `""` to refresh the entire device parameter tree.
+
+```bash
+curl -i 'http://localhost:7557/devices/202BC1-BM632w-000000/tasks?connection_request' \
+-X POST \
+--data '{"name": "refreshObject", "objectName": ""}'
+```
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-SR552n-SR552NA084%252D0003269/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name": "refreshObject", "objectName": "InternetGatewayDevice.WANDevice.1.WANConnectionDevice"}'
+```
+
+---
+
+### `setParameterValues`
+
+Sets the value of one or more TR-069 parameters. Each entry is a `[path, value, type?]` triple. Multiple values can be set in a single task.
+
+**Set a single parameter:**
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-SR552n-SR552NA084%252D0003269/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name": "setParameterValues", "parameterValues": [["InternetGatewayDevice.ManagementServer.UpgradesManaged",false]]}'
+```
+
+**Set multiple parameters at once:**
+
+```json
+{
+  "name": "setParameterValues",
+  "parameterValues": [
+    ["InternetGatewayDevice.ManagementServer.UpgradesManaged", false],
+    ["InternetGatewayDevice.Time.Enable", true],
+    ["InternetGatewayDevice.Time.NTPServer1", "pool.ntp.org"]
+  ]
+}
+```
+
+**Set WiFi SSID and password:**
+
+```json
+{
+  "name": "setParameterValues",
+  "parameterValues": [
+    ["InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID", "GenieACS", "xsd:string"],
+    ["InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey", "hello world", "xsd:string"]
+  ]
+}
+```
+
+```bash
+curl -i 'http://localhost:7557/devices/202BC1-BM632w-000000/tasks?connection_request' \
+-X POST \
+--data '{"name":"setParameterValues", "parameterValues": [["InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID", "GenieACS", "xsd:string"],["InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey", "hello world", "xsd:string"]]}'
+```
+
+---
+
+### `addObject`
+
+Creates a new instance under a multi-instance object.
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-SR552n-SR552NA084%252D0003269/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name":"addObject","objectName":"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection"}'
+```
+
+---
+
+### `deleteObject`
+
+Deletes a specific instance of a multi-instance object.
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-SR552n-SR552NA084%252D0003269/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name":"deleteObject","objectName":"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1"}'
+```
+
+---
+
+### `reboot`
+
+Reboots the device.
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-SR552n-SR552NA084%252D0003269/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name": "reboot"}'
+```
+
+---
+
+### `factoryReset`
+
+Resets the device to factory defaults.
+
+<Warning>
+  This operation is irreversible. The device will lose all configuration and may need to be re-provisioned.
+</Warning>
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-SR552n-SR552NA084%252D0003269/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name": "factoryReset"}'
+```
+
+---
+
+### `download`
+
+Instructs the device to download a file from the GenieACS file server. The file must first be uploaded via the [Files API](/api/files).
+
+```bash
+curl -i 'http://localhost:7557/devices/00236a-SR552n-SR552NA084%252D0003269/tasks?timeout=3000&connection_request' \
+-X POST \
+--data '{"name": "download", "file": "mipsbe-6-42-lite.xml"}'
+```
+
+<ParamField body="file" type="string" required>
+  The filename as uploaded to the GenieACS file store. Must match the name used in `PUT /files/<file_name>`.
+</ParamField>

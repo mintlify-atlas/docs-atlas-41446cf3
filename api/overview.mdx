@@ -1,0 +1,130 @@
+---
+title: "API Overview"
+description: "Introduction to the GenieACS Northbound Interface (NBI) REST API."
+---
+
+The Northbound Interface (NBI) is GenieACS's REST API for external system integration. Use it to connect OSS/BSS systems, automation scripts, and custom tooling to your ACS instance — querying device state, enqueuing tasks, managing presets, and uploading firmware.
+
+## Base URL
+
+The NBI listens on port **7557** by default.
+
+```
+http://<host>:7557
+```
+
+All examples in this documentation assume `genieacs-nbi` is running locally on the default port.
+
+<Warning>
+  The NBI has no built-in authentication. It is designed for use on trusted internal networks. In production, restrict access with firewall rules or place a reverse proxy with authentication in front of the NBI.
+</Warning>
+
+## Queries
+
+Most collection endpoints accept a `query` parameter containing a MongoDB-style JSON filter. The value must be URL-encoded.
+
+```bash
+# Decoded for readability — must be percent-encoded in actual requests
+curl 'http://localhost:7557/devices/?query={"_id":"202BC1-BM632w-000000"}'
+```
+
+<Warning>
+  A common pitfall is not properly percent-encoding special characters in the device ID or query string. Always URL-encode the `query` parameter value before sending the request.
+</Warning>
+
+### Query operators
+
+Queries use MongoDB's JSON query syntax.
+
+| Operator | Description |
+|----------|-------------|
+| `{"field": "value"}` | Equality match |
+| `$gt` | Greater than |
+| `$lt` | Less than |
+| `$gte` | Greater than or equal |
+| `$lte` | Less than or equal |
+| `$ne` | Not equal |
+
+**Example — devices not informed since a given date:**
+
+```json
+{
+  "_lastInform": {
+    "$lt": "2017-12-11 13:16:23 +0000"
+  }
+}
+```
+
+## Projection
+
+Collection query endpoints accept an optional `projection` parameter: a comma-separated list of parameter paths to include in the response. Use this to reduce response size when working with large device documents.
+
+```bash
+curl 'http://localhost:7557/devices?query=%7B%22_id%22%3A%22202BC1-BM632w-000000%22%7D&projection=InternetGatewayDevice.DeviceInfo.ModelName,InternetGatewayDevice.DeviceInfo.Manufacturer'
+```
+
+## Queryable collections
+
+The following collections can be queried via `GET /<collection>/?query=<query>`:
+
+| Collection | Description |
+|------------|-------------|
+| `devices` | CPE device records |
+| `tasks` | Queued device management tasks |
+| `presets` | Configuration rules |
+| `objects` | Generic configuration objects |
+| `files` | Uploaded firmware and configuration files |
+| `faults` | Device fault records |
+| `provisions` | Provision scripts |
+| `virtualParameters` | Virtual parameter scripts |
+
+## Pagination
+
+Collection queries support `skip` and `limit` parameters for pagination. The response `total` header contains the total number of matching documents.
+
+## Sorting
+
+Pass a `sort` parameter as a JSON object with field names and sort direction (`1` for ascending, `-1` for descending):
+
+```bash
+curl 'http://localhost:7557/devices/?sort={"_lastInform":-1}'
+```
+
+## Ping a device
+
+```
+GET /ping/<host>
+```
+
+Sends an ICMP ping to the given hostname or IP address and returns the raw ping output. Useful for quickly checking whether a device's IP address is reachable from the ACS host.
+
+```bash
+curl 'http://localhost:7557/ping/192.168.1.1'
+```
+
+**Response:** `200 OK` with ping output on success. `404 Not Found` if the host is unreachable. `500 Internal Server Error` if ping fails to run.
+
+---
+
+## API resources
+
+<CardGroup cols={2}>
+  <Card title="Devices" icon="router" href="/api/devices">
+    Query devices, manage tags, and delete device records.
+  </Card>
+  <Card title="Tasks" icon="list-checks" href="/api/tasks">
+    Enqueue and manage device management tasks.
+  </Card>
+  <Card title="Presets" icon="sliders" href="/api/presets">
+    Create and manage device configuration presets.
+  </Card>
+  <Card title="Provisions" icon="code" href="/api/provisions">
+    Upload and manage provision scripts and virtual parameters.
+  </Card>
+  <Card title="Files" icon="file" href="/api/files">
+    Upload firmware images and configuration files.
+  </Card>
+  <Card title="Faults" icon="triangle-alert" href="/api/faults">
+    Query and clear device faults.
+  </Card>
+</CardGroup>

@@ -1,0 +1,142 @@
+---
+title: "Presets"
+description: "Configure device assignment rules that map provisions and configurations to devices."
+---
+
+Presets are rules that assign configurations or provision scripts to devices based on a precondition filter, an optional schedule, and optional TR-069 event triggers. During each CWMP session, GenieACS evaluates all presets against the connecting device and applies any that match.
+
+## Preset properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `weight` | number | Priority ordering. Presets with a lower weight are applied first. |
+| `precondition` | string | JSON filter expression (MongoDB-style) to match devices. |
+| `configurations` | array | Array of configuration entries to apply. |
+| `schedule` | string | Cron expression for scheduled execution. |
+| `events` | object | TR-069 event triggers (e.g., `"1 BOOT"`, `"0 BOOTSTRAP"`). |
+
+## Precondition
+
+The `precondition` property is a JSON string that specifies which devices the preset applies to. It uses MongoDB query syntax.
+
+```javascript
+// Match devices tagged "test"
+{"_tags": "test"}
+
+// Match devices where param equals value and param2 does not equal value2
+{"param": "value", "param2": {"$ne": "value2"}}
+```
+
+Supported comparison operators: `$gt`, `$lt`, `$gte`, `$lte`, `$ne`
+
+## Configurations
+
+The `configurations` array defines what changes are applied to matched devices. Each entry has a `type` field that determines its behavior.
+
+<AccordionGroup>
+  <Accordion title="value — set a parameter value">
+
+```javascript
+{
+  "type": "value",
+  "name": "InternetGatewayDevice.ManagementServer.PeriodicInformInterval",
+  "value": "300"
+}
+```
+
+  </Accordion>
+
+  <Accordion title="delete_object — delete an object instance">
+
+```javascript
+{
+  "type": "delete_object",
+  "name": "object_parent",
+  "object": "object_name"
+}
+```
+
+  </Accordion>
+
+  <Accordion title="add_object — add an object instance">
+
+```javascript
+{
+  "type": "add_object",
+  "name": "object_parent",
+  "object": "object_name"
+}
+```
+
+  </Accordion>
+
+  <Accordion title="provision — trigger a named provision script">
+
+```javascript
+{
+  "type": "provision",
+  "name": "YourProvisionName"
+}
+```
+
+You may pass additional arguments to the provision script alongside the `name` field. The provision named `"YourProvisionName"` must exist in the database.
+
+  </Accordion>
+</AccordionGroup>
+
+## Example: 5-minute inform interval for tagged devices
+
+The following preset sets a 5-minute periodic inform interval for all devices tagged `"test"`.
+
+<CodeGroup>
+
+```javascript preset object
+{
+  "weight": 0,
+  "precondition": "{\"_tags\": \"test\"}",
+  "configurations": [
+    {
+      "type": "value",
+      "name": "InternetGatewayDevice.ManagementServer.PeriodicInformEnable",
+      "value": "true"
+    },
+    {
+      "type": "value",
+      "name": "InternetGatewayDevice.ManagementServer.PeriodicInformInterval",
+      "value": "300"
+    }
+  ]
+}
+```
+
+```bash curl
+curl -i 'http://localhost:7557/presets/inform' \
+-X PUT \
+--data '{"weight": 0, "precondition": "{\"_tags\": \"test\"}", "configurations": [{"type": "value", "name": "InternetGatewayDevice.ManagementServer.PeriodicInformEnable", "value": "true"}, {"type": "value", "name": "InternetGatewayDevice.ManagementServer.PeriodicInformInterval", "value": "300"}]}'
+```
+
+</CodeGroup>
+
+## How presets are evaluated
+
+During each CWMP session, GenieACS evaluates all presets against the device. Matching presets have their configurations applied in ascending `weight` order. Provision scripts are executed in the same order.
+
+After applying configurations, if the device data has changed (e.g., new parameter values were fetched), the preset evaluation loop runs again. This repeats for up to **4 cycles** to allow dependent configurations to settle.
+
+<Note>
+  If presets create a configuration conflict (for example, two presets
+  continuously setting the same parameter to different values), the 4-cycle
+  limit prevents an infinite loop. The resulting fault is recorded in the
+  `faults` collection. See [Fault Management](/device-management/fault-management).
+</Note>
+
+## Managing presets
+
+<CardGroup cols={2}>
+  <Card title="Via the UI" icon="layout-dashboard">
+    Navigate to **Admin → Presets** to create, edit, and delete presets through the web interface.
+  </Card>
+  <Card title="Via the API" icon="code" href="/api/presets">
+    Use `PUT /presets/<name>` to create or update a preset, and `DELETE /presets/<name>` to remove one. See the [API reference](/api/presets).
+  </Card>
+</CardGroup>

@@ -1,0 +1,207 @@
+---
+title: "Path Expressions"
+description: "Learn how to use TR-069 paths, wildcards, and alias filters in GenieACS."
+---
+
+A **path** identifies a TR-069 parameter in a device's data model. Paths are dot-separated strings where each segment corresponds to one level of the parameter tree.
+
+```
+Device.DeviceInfo.SerialNumber
+InternetGatewayDevice.ManagementServer.URL
+```
+
+GenieACS extends the basic dot-notation with two additional segment types — wildcards and alias filters — that let a single path expression address multiple parameters at once.
+
+## Path segment types
+
+<CardGroup cols={3}>
+  <Card title="Exact match" icon="equals">
+    Every segment names a specific node. Returns at most one parameter.
+  </Card>
+  <Card title="Wildcard (`*`)" icon="asterisk">
+    Matches any single segment. Returns all parameters at that position.
+  </Card>
+  <Card title="Alias filter (`[key:value]`)" icon="filter">
+    Like a wildcard, but only returns instances where a sibling parameter equals
+    the given value.
+  </Card>
+</CardGroup>
+
+### Exact match
+
+```
+Device.WiFi.SSID.1.Name
+```
+
+Addresses a single, specific parameter. `declare()` returns a `ParameterWrapper` whose `.value`, `.path`, and other accessors resolve directly to that parameter.
+
+### Wildcard (`*`)
+
+A `*` in any segment position matches every child at that level:
+
+```
+Device.WANDevice.*.WANConnectionDevice.*.WANIPConnection.*.MACAddress
+```
+
+This matches every `MACAddress` parameter across all WAN devices, connection devices, and IP connections. Use `for...of` on the returned `ParameterWrapper` to iterate the results.
+
+```javascript
+let macs = declare(
+  "Device.WANDevice.*.WANConnectionDevice.*.WANIPConnection.*.MACAddress",
+  {value: 1}
+);
+for (const mac of macs) {
+  log(mac.path + ": " + mac.value[0]);
+}
+```
+
+### Alias filter (`[key:value]`)
+
+An alias filter acts like a wildcard but additionally restricts results to instances where a sibling parameter matches the given value:
+
+```
+Device.WANDevice.1.WANConnectionDevice.1.WANIPConnection.[AddressingType:DHCP].ExternalIPAddress
+```
+
+This returns every `ExternalIPAddress` parameter whose sibling `AddressingType` parameter equals `"DHCP"`.
+
+You can include **multiple key-value pairs** in the same filter (comma-separated), use **multiple filters**, or **mix filters and wildcards** within the same path. All combinations are valid.
+
+<Note>
+  Paths are parsed and cached in a two-generation LRU cache rotated every 120
+  seconds. Paths are immutable once created, and their segments are frozen.
+</Note>
+
+<Warning>
+  Paths are limited to **32 segments** due to the bitmask encoding used
+  internally for O(1) segment-type checking.
+</Warning>
+
+---
+
+## Using path expressions with `declare()`
+
+### Reading a single parameter
+
+```javascript
+let serial = declare("Device.DeviceInfo.SerialNumber", {value: 1});
+declare("Device.LANDevice.1.WLANConfiguration.1.SSID", null, {value: serial.value[0]});
+```
+
+### Re-discovering instances with `path` timestamp
+
+Using a recent timestamp for the `path` attribute causes GenieACS to re-sync the device and rediscover all matching instances:
+
+```javascript
+// Re-discover all Host instances
+declare("InternetGatewayDevice.LANDevice.1.Hosts.Host.*.MACAddress", {path: Date.now()}, null);
+```
+
+---
+
+## Creating and deleting object instances
+
+Because provisions are declarative, you do not issue explicit AddObject or DeleteObject commands. Instead, you declare the **desired number of instances** and GenieACS determines what RPCs are needed.
+
+Specify the count using the `path` key in the `values` argument of `declare()`. The wildcard (or alias filter) at the last segment of the path is the instance selector.
+
+### Ensure exactly one instance exists
+
+```javascript
+// Example: Ensure we have one and only one WANIPConnection object
+declare("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.*", null, {path: 1});
+```
+
+`{path: 1}` means "there should be exactly 1 instance matching this path."
+
+### Delete all instances matching a filter
+
+```javascript
+// Ensure that *all* other instances are deleted
+declare("InternetGatewayDevice.X_BROADCOM_COM_IPAddrAccCtrl.X_BROADCOM_COM_IPAddrAccCtrlListCfg.[]", null, {path: 0});
+
+// Add the two entries we care about
+declare("InternetGatewayDevice.X_BROADCOM_COM_IPAddrAccCtrl.X_BROADCOM_COM_IPAddrAccCtrlListCfg.[SourceIPAddress:192.168.1.0,SourceNetMask:255.255.255.0]",  {path: now}, {path: 1});
+declare("InternetGatewayDevice.X_BROADCOM_COM_IPAddrAccCtrl.X_BROADCOM_COM_IPAddrAccCtrlListCfg.[SourceIPAddress:172.16.12.0,SourceNetMask:255.255.0.0]", {path: now}, {path: 1});
+```
+
+`{path: 0}` deletes all instances. The empty alias filter `[]` matches every instance regardless of its child parameters.
+
+---
+
+## Special GenieACS parameters
+
+In addition to the standard TR-069 data model, GenieACS exposes its own parameters that can be used in `declare()` calls.
+
+### `DeviceID`
+
+Read-only parameters that identify the device. These are populated from the Inform message.
+
+| Path                     | Description                             |
+| ------------------------ | --------------------------------------- |
+| `DeviceID.ID`            | GenieACS internal device identifier.    |
+| `DeviceID.SerialNumber`  | Device serial number.                   |
+| `DeviceID.ProductClass`  | Device product class.                   |
+| `DeviceID.OUI`           | Organizationally Unique Identifier.     |
+| `DeviceID.Manufacturer`  | Device manufacturer name.               |
+
+### `Tags`
+
+Device tags are exposed as boolean child parameters under `Tags`. Setting a tag to `false` deletes it; setting a non-existent tag to `true` creates it.
+
+```javascript
+// Example: Remove "tag1", add "tag2", and read "tag3"
+declare("Tags.tag1", null, {value: false});
+declare("Tags.tag2", null, {value: true});
+let tag3 = declare("Tags.tag3", {value: 1});
+```
+
+### `Reboot`
+
+Holds the timestamp of the last reboot command. Declaring a value larger than the current value triggers a reboot.
+
+```javascript
+// Example: Reboot the device only if it hasn't been rebooted in the past 300 seconds
+declare("Reboot", null, {value: Date.now() - (300 * 1000)});
+```
+
+### `FactoryReset`
+
+Works like `Reboot` but triggers a factory reset.
+
+```javascript
+// Example: Default the device to factory settings
+declare("FactoryReset", null, {value: Date.now()});
+```
+
+### `Downloads`
+
+The `Downloads` sub-tree holds information about download commands. Each download is an instance (e.g. `Downloads.1`) with parameters including `Download` (timestamp), `LastFileType`, `LastFileName`. The parameters `FileType`, `FileName`, `TargetFileName`, and `Download` are writable.
+
+```javascript
+declare("Downloads.[FileType:1 Firmware Upgrade Image]", {path: 1}, {path: 1});
+declare("Downloads.[FileType:1 Firmware Upgrade Image].FileName", {value: 1}, {value: "firmware-2017.01.tar"});
+declare("Downloads.[FileType:1 Firmware Upgrade Image].Download", {value: 1}, {value: Date.now()});
+```
+
+Common file type strings:
+
+| Value                      | Meaning                    |
+| -------------------------- | -------------------------- |
+| `1 Firmware Upgrade Image` | Firmware image             |
+| `2 Web Content`            | Web content                |
+| `3 Vendor Configuration File` | Vendor config file      |
+| `4 Tone File`              | Tone file                  |
+| `5 Ringer File`            | Ringer file                |
+
+<Warning>
+  Pushing a file to the device is often a service-interrupting operation. It's
+  recommended to only trigger it on certain events such as `1 BOOT` or during a
+  predetermined maintenance window.
+</Warning>
+
+After the CPE finishes downloading and applying the file, it sends a `7 TRANSFER COMPLETE` event. You can use that event to trigger a reboot.
+
+### `VirtualParameters`
+
+User-defined computed parameters appear under the `VirtualParameters.*` namespace and can be read and written just like real device parameters. Virtual parameter scripts can reference other virtual parameters up to 8 levels deep.

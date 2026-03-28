@@ -1,0 +1,87 @@
+---
+title: "Fault Management"
+description: "Monitor, investigate, and resolve device faults in GenieACS."
+---
+
+When an error occurs during a CWMP session, GenieACS records a **fault** in the `faults` collection in MongoDB. Faults capture the error state and retry information for failed operations.
+
+## Fault ID format
+
+Every fault has an ID with the format:
+
+```
+<device_id>:<channel>
+```
+
+The **channel** scopes the fault to the operation that caused it. The default channel is `"default"`. Each preset and provision has its own channel, so faults from different operations do not interfere with each other.
+
+**Example fault ID:**
+
+```
+202BC1-BM632w-000000:default
+```
+
+## Common causes of faults
+
+<AccordionGroup>
+  <Accordion title="Script errors in provisions">
+    A syntax error, runtime exception, or unhandled rejection in a provision script will cause a fault on that provision's channel.
+  </Accordion>
+  <Accordion title="Device rejected an RPC">
+    If the CPE responds to a SetParameterValues, AddObject, or other RPC with a fault response, GenieACS records the fault.
+  </Accordion>
+  <Accordion title="Timeout during CWMP session">
+    If the device does not respond within the session timeout, any pending operations are recorded as faulted.
+  </Accordion>
+  <Accordion title="Conflicting configuration (4-cycle limit)">
+    Presets are re-evaluated up to 4 cycles per session if device data changes. If a stable state is not reached within 4 cycles — for example, because two presets are setting the same parameter to conflicting values — GenieACS stops and records a fault. See [Presets](/device-management/presets) for details on the evaluation loop.
+  </Accordion>
+</AccordionGroup>
+
+## Automatic retry
+
+Faults are retried automatically on the device's next CWMP session. If the underlying cause has been resolved (e.g., a broken provision script has been fixed), the operation will succeed and the fault will be cleared.
+
+## Viewing faults
+
+<Steps>
+  <Step title="Open the UI">
+    Log in to the GenieACS web interface.
+  </Step>
+  <Step title="Navigate to faults">
+    Go to **Admin → Faults** to view all recorded faults. You can filter by device ID, channel, or time range.
+  </Step>
+  <Step title="Inspect a fault">
+    Click a fault entry to see the full error detail, including the stack trace for script errors.
+  </Step>
+</Steps>
+
+## Querying faults via the API
+
+Use the NBI to retrieve fault records programmatically.
+
+```bash
+curl 'http://localhost:7557/faults/?query={}'
+```
+
+This returns all faults as a JSON array. Each fault object includes the device ID, channel, timestamp, and error details.
+
+## Clearing a fault
+
+To clear a fault manually, delete it via the API. The fault ID is `<device_id>:<channel>`.
+
+```bash
+curl -i 'http://localhost:7557/faults/202BC1-BM632w-000000:default' -X DELETE
+```
+
+<Warning>
+  Deleting a fault does not fix the underlying cause. If the same error
+  condition persists, the fault will be re-created on the device's next session.
+  Investigate and resolve the root cause before clearing the fault.
+</Warning>
+
+<Tip>
+  If you are seeing duplicate log entries related to a fault, see the
+  [FAQ](/operations/faq) — this is expected behavior due to the provision replay
+  execution model.
+</Tip>
